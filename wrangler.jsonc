@@ -10,11 +10,22 @@
     "run_worker_first": ["/api/*"],
     "not_found_handling": "404-page"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vprepcaa-db",
+      "database_id": "56e113a9-20b3-4327-8156-ee5fdd71de4d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Private bucket: never enable public access. Files are served only through /api/v1/media.
+  "r2_buckets": [
+    { "binding": "CONTENT", "bucket_name": "vprepcaa-content" }
+  ],
   // Public values only. Secrets (GOOGLE_CLIENT_SECRET, BETTER_AUTH_SECRET) are set in the
   // Cloudflare dashboard and never committed.
   "vars": {
     "BETTER_AUTH_URL": "https://vprepcaa.com",
     "GOOGLE_CLIENT_ID": "664348467235-fu2jq5sqeknt1q427r5ass1f4tba5mqc.apps.googleusercontent.com"
   }
-  // D1 (DB) and R2 (CONTENT) bindings are added in Step 0b, once the resources exist.
 }
