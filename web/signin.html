@@ -7,13 +7,36 @@
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<header><a href="/">vprepcaa</a></header>
-<main>
+<header class="site-header">
+  <a class="brand" href="/">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"></nav>
+</header>
+<main class="narrow">
   <h1>Sign in</h1>
-  <p>Use your Google account. Access is by invitation from your teacher.</p>
-  <p><button id="google" class="btn" type="button">Continue with Google</button></p>
-  <p id="message" role="alert"></p>
-  <p><a href="/privacy">Privacy policy</a></p>
+  <p id="message" class="form-message" role="alert"></p>
+
+  <section class="card">
+    <h2>Already have an account?</h2>
+    <p>Sign in with the Google account you used before.</p>
+    <button id="google" class="btn btn-block btn-google" type="button">Continue with Google</button>
+  </section>
+
+  <form id="join-form" class="card" novalidate>
+    <h2>New here? Join your class</h2>
+    <p>Enter the class code from your teacher, then sign in with Google. Your account is created and you're added to the class.</p>
+    <label for="join-code">Class code</label>
+    <div class="code-row">
+      <input id="join-code" class="code-input" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7Q3MZ" required>
+      <button id="check" class="btn btn-secondary" type="submit">Check code</button>
+    </div>
+    <div id="class-found" class="class-found" hidden>
+      <p>You're joining <strong id="class-name"></strong><span id="class-detail"></span>.</p>
+      <button id="join-google" class="btn btn-block btn-google" type="button">Join with Google</button>
+    </div>
+    <p id="join-message" class="form-message" role="alert"></p>
+  </form>
+
+  <p class="muted small">By signing in you agree to how we handle your data in the <a href="/privacy">privacy policy</a>.</p>
 </main>
 <script type="module" src="/js/signin.js"></script>
 </body>

@@ -3,16 +3,58 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Student portal | vprepcaa</title>
+<title>My dashboard | vprepcaa</title>
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<header><a href="/">vprepcaa</a></header>
+<header class="site-header">
+  <a class="brand" href="/">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"></nav>
+</header>
 <main>
-  <h1>Student portal</h1>
-  <p id="who">Checking your sign-in…</p>
-  <p>Practice questions will appear here in a later update.</p>
-  <p><button id="signout" class="btn" type="button">Sign out</button></p>
+  <div class="page-head">
+    <h1 id="greeting">My dashboard</h1>
+    <button id="signout" class="btn btn-secondary" type="button">Sign out</button>
+  </div>
+  <p id="who" class="muted">Checking your sign-in…</p>
+  <p id="banner" class="banner" role="status" hidden></p>
+
+  <section>
+    <h2>My classes</h2>
+    <ul id="classes" class="class-list"></ul>
+    <p id="no-classes" class="muted" hidden>You're not in any classes yet.</p>
+  </section>
+
+  <form id="join-form" class="card" novalidate hidden>
+    <h2>Join a class</h2>
+    <label for="join-code">Class code</label>
+    <div class="code-row">
+      <input id="join-code" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7Q3MZ">
+      <button class="btn" type="submit">Join</button>
+    </div>
+    <p id="join-message" class="form-message" role="alert"></p>
+  </form>
+
+  <form id="create-form" class="card" novalidate hidden>
+    <h2>Create a class</h2>
+    <p class="muted">You'll get a 6-character code to share with your students.</p>
+    <label for="class-name">Class name</label>
+    <input id="class-name" maxlength="60" placeholder="e.g. 12 General Maths A" required>
+    <div class="form-row">
+      <div>
+        <label for="class-subject">Subject</label>
+        <select id="class-subject" required></select>
+      </div>
+      <div>
+        <label for="class-year">Year</label>
+        <input id="class-year" type="number" min="2020" max="2100" required>
+      </div>
+    </div>
+    <button class="btn" type="submit">Create class</button>
+    <p id="create-message" class="form-message" role="alert"></p>
+  </form>
+
+  <p class="muted">Practice questions will appear here in a later update.</p>
 </main>
 <script type="module" src="/js/student.js"></script>
 </body>

@@ -3,6 +3,13 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { eq } from 'drizzle-orm';
 import { getDb, schema } from '../db/client.js';
+import { findClassByCode, enrolStudent } from '../lib/classes.js';
+import { readJoinCode } from '../lib/join-cookie.js';
+
+/** Cookie header of the request a Better Auth hook runs in (absent outside endpoints). */
+function cookieOf(/** @type {any} */ ctx) {
+  return ctx?.headers?.get?.('cookie') ?? ctx?.request?.headers?.get?.('cookie') ?? null;
+}
 
 /**
  * Builds the Better Auth instance for one request (Workers bindings are per-request).
@@ -50,16 +57,27 @@ export function createAuth(env) {
             if (u?.status === 'suspended') throw new APIError('FORBIDDEN', { message: 'account_suspended' });
             return { data: s };
           },
+          // Signed in with a class code (new or existing student): enrol them in that class.
+          after: async (s, ctx) => {
+            const code = await readJoinCode(env.BETTER_AUTH_SECRET, cookieOf(ctx));
+            if (!code) return;
+            const cls = await findClassByCode(db, code);
+            const u = await db.select({ role: schema.user.platformRole }).from(schema.user).where(eq(schema.user.id, s.userId)).get();
+            if (cls && u?.role === 'student') await enrolStudent(db, cls.id, s.userId);
+          },
         },
       },
       user: {
         create: {
-          // Invite-only for now: an account is created only for emails in the allowlist table.
-          before: async (u) => {
+          // Who can create an account: emails on the allowlist (role from the list), or
+          // anyone arriving with a valid class code (always a student).
+          before: async (u, ctx) => {
             const email = String(u.email || '').toLowerCase();
             const row = await db.select().from(schema.allowlist).where(eq(schema.allowlist.email, email)).get();
-            if (!row) throw new APIError('FORBIDDEN', { message: 'not_invited' });
-            return { data: { ...u, email, platformRole: row.role } };
+            if (row) return { data: { ...u, email, platformRole: row.role } };
+            const code = await readJoinCode(env.BETTER_AUTH_SECRET, cookieOf(ctx));
+            if (code && (await findClassByCode(db, code))) return { data: { ...u, email, platformRole: 'student' } };
+            throw new APIError('FORBIDDEN', { message: 'not_invited' });
           },
         },
       },
