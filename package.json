@@ -10,12 +10,15 @@
     "check": "tsc --noEmit -p jsconfig.json && tsc --noEmit -p web/jsconfig.json",
     "db:migrate:local": "wrangler d1 migrations apply vprepcaa-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply vprepcaa-db --remote",
-    "db:seed:local": "wrangler d1 execute vprepcaa-db --local --file=seeds/dev.sql",
+    "db:seed:local": "wrangler d1 execute vprepcaa-db --local --file=seeds/dev.sql && wrangler d1 execute vprepcaa-db --local --file=seeds/dev-dashboard.sql",
     "test:db": "node --no-warnings tests/db/schema.test.mjs",
     "test:auth": "node --no-warnings tests/auth/auth-writes.test.mjs",
-    "test": "npm run test:db && npm run test:auth && npm run test:join",
+    "test": "npm run test:db && npm run test:auth && npm run test:join && npm run test:dashboard",
     "db:migrate:preview": "wrangler d1 migrations apply vprepcaa-db-preview --remote --config wrangler.preview-migrations.jsonc",
-    "test:join": "node --no-warnings tests/auth/join.test.mjs"
+    "test:join": "node --no-warnings tests/auth/join.test.mjs",
+    "test:dashboard": "node --no-warnings tests/dashboard/dashboard.test.mjs",
+    "import:bank": "node scripts/import-bank.mjs",
+    "upload:content": "node scripts/upload-content.mjs"
   },
   "dependencies": {
     "better-auth": "^1.7.25",

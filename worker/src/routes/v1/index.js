@@ -4,6 +4,7 @@ import { createAuth } from '../../auth/index.js';
 import { getDb, schema } from '../../db/client.js';
 import { normaliseCode, findClassByCode, enrolStudent, listMyClasses, createClass } from '../../lib/classes.js';
 import { makeJoinCookie, clearJoinCookie, readJoinCode } from '../../lib/join-cookie.js';
+import { buildDashboard } from '../../lib/dashboard.js';
 
 /**
  * @typedef {{ id: string, name: string, email: string, image: string | null, role: string }} SessionUser
@@ -45,6 +46,17 @@ v1.get('/me', requireUser, async (c) => {
   const user = c.var.user;
   const classes = await listMyClasses(getDb(c.env), user.id);
   return c.json({ ...user, classes });
+});
+
+/**
+ * The student dashboard: progress per subject, chapters, homework, today's daily
+ * questions (chosen and stored on the first request of the day), streak, recent
+ * results and the recommended next activity. Students only; staff get 403.
+ */
+v1.get('/dashboard', requireUser, async (c) => {
+  if (c.var.user.role !== 'student') return c.json({ error: 'students_only' }, 403);
+  c.header('Cache-Control', 'no-store');
+  return c.json(await buildDashboard(c.env.DB, c.var.user.id));
 });
 
 // ---- Joining a class with a code ------------------------------------------

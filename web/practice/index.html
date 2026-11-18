@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Practice | vprepcaa</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="19">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"></nav>
+</header>
+<main class="narrow">
+  <div class="card">
+    <span class="eyebrow">Coming next</span>
+    <h1 id="what" style="margin-top:.4rem">Practice</h1>
+    <p>The question screen is being brought over from Pixel Practice: answer-sheet ovals, working space, self-marking by part and worked solutions. Your dashboard already knows which questions are lined up for you.</p>
+    <a class="btn" href="/student/">Back to my dashboard</a>
+  </div>
+</main>
+<script type="module">
+  import { initHeader } from '/js/header.js';
+  initHeader();
+  const p = new URLSearchParams(location.search);
+  const what = p.get('assignment') ? 'Homework' : p.get('mode') === 'daily' ? "Today's questions" : p.get('mode') === 'fix' ? 'Fix your mistakes' : p.get('mode') === 'topic' ? 'Chapter practice' : 'Practice';
+  document.getElementById('what').textContent = what;
+</script>
+</body>
+</html>
