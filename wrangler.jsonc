@@ -3,6 +3,7 @@
   "name": "vprepcaa",
   "main": "worker/src/index.js",
   "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./web",
     "binding": "ASSETS",
