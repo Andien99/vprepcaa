@@ -6,6 +6,7 @@ import { normaliseCode, findClassByCode, enrolStudent, listMyClasses, createClas
 import { makeJoinCookie, clearJoinCookie, readJoinCode } from '../../lib/join-cookie.js';
 import { buildDashboard } from '../../lib/dashboard.js';
 import { buildSession, questionAccess, getSolution, recordAttempt, submitHomework, PracticeError } from '../../lib/practice.js';
+import { bankSubjects, bankMeta, bankQuestions, setStar, updateQuestion, saveSolution, saveImage, createPaper, createQuestion, createType, updateType, mergeType, updateArea, BankError } from '../../lib/bank.js';
 
 /**
  * @typedef {{ id: string, name: string, email: string, image: string | null, role: string }} SessionUser
@@ -83,7 +84,7 @@ v1.get(
     c.header('Cache-Control', 'no-store');
     if (c.var.user.role !== 'student') throw new PracticeError(403, 'students_only');
     const q = c.req.query();
-    return buildSession(c.env.DB, c.var.user, { mode: q.mode ?? '', subject: q.subject, chapter: q.chapter, assignment: q.assignment });
+    return buildSession(c.env.DB, c.var.user, { mode: q.mode ?? '', subject: q.subject, chapter: q.chapter, assignment: q.assignment, ids: q.ids });
   }),
 );
 
@@ -130,6 +131,46 @@ v1.post(
   requireUser,
   practice(async (c) => submitHomework(c.env.DB, c.var.user, c.req.param('id'))),
 );
+
+// ---- Question bank (the Notion bank design) -----------------------------------------
+
+/** Runs a bank handler, turning BankError into a JSON error response. */
+const bank = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    c.header('Cache-Control', 'no-store');
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof BankError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+const body = async (/** @type {any} */ c) => c.req.json().catch(() => ({}));
+
+/** Subjects this user can open in the bank. */
+v1.get('/bank/subjects', requireUser, bank((c) => bankSubjects(c.env.DB, c.var.user)));
+/** Areas, question types, papers, chapters of a subject, and what the user may edit. */
+v1.get('/bank/meta', requireUser, bank((c) => bankMeta(c.env.DB, c.var.user, c.req.query('subject') ?? '')));
+/** The bank's rows for a subject (students: what they may see, with their results). */
+v1.get('/bank/questions', requireUser, bank((c) => bankQuestions(c.env.DB, c.var.user, c.req.query('subject') ?? '')));
+/** Star / unstar a question. */
+v1.put('/bank/stars/:id', sameOrigin, requireUser, bank((c) => setStar(c.env.DB, c.var.user, c.req.param('id'), true)));
+v1.delete('/bank/stars/:id', sameOrigin, requireUser, bank((c) => setStar(c.env.DB, c.var.user, c.req.param('id'), false)));
+/** Editing (admins: shared bank; teachers: their school's questions). */
+v1.patch('/bank/questions/:id', sameOrigin, requireUser, bank(async (c) => updateQuestion(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
+v1.put('/bank/questions/:id/solution', sameOrigin, requireUser, bank(async (c) => saveSolution(c.env, c.var.user, c.req.param('id'), await body(c))));
+v1.put(
+  '/bank/questions/:id/image',
+  sameOrigin,
+  requireUser,
+  bank(async (c) => saveImage(c.env, c.var.user, c.req.param('id'), await c.req.arrayBuffer(), c.req.header('Content-Type') ?? '')),
+);
+v1.post('/bank/papers', sameOrigin, requireUser, bank(async (c) => createPaper(c.env.DB, c.var.user, await body(c))));
+v1.post('/bank/questions', sameOrigin, requireUser, bank(async (c) => createQuestion(c.env.DB, c.var.user, await body(c))));
+/** Taxonomy (admins): question types and study design areas. */
+v1.post('/bank/types', sameOrigin, requireUser, bank(async (c) => createType(c.env.DB, c.var.user, await body(c))));
+v1.patch('/bank/types/:id', sameOrigin, requireUser, bank(async (c) => updateType(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
+v1.post('/bank/types/:id/merge', sameOrigin, requireUser, bank(async (c) => mergeType(c.env.DB, c.var.user, c.req.param('id'), (await body(c)).into)));
+v1.patch('/bank/areas/:id', sameOrigin, requireUser, bank(async (c) => updateArea(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
 
 // ---- Joining a class with a code ------------------------------------------
 

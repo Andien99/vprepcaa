@@ -33,7 +33,7 @@ export async function buildDashboard(DB, userId, opts = {}) {
   const now = opts.now ?? Date.now();
   const today = localDate(now);
 
-  const [classesRes, chaptersRes, accessRes, topicsRes, questionsRes, attemptsRes, progressRes, assignmentsRes, setsRes] = await DB.batch([
+  const [classesRes, chaptersRes, accessRes, topicsRes, questionsRes, attemptsRes, progressRes, assignmentsRes, setsRes, typesRes] = await DB.batch([
     DB.prepare(
       `SELECT c.id, c.name, c.subject_id AS subjectId, s.code AS subjectCode, s.name AS subjectName, s.position AS subjectPosition
          FROM class_members cm JOIN classes c ON c.id = cm.class_id AND c.is_archived = 0
@@ -59,7 +59,8 @@ export async function buildDashboard(DB, userId, opts = {}) {
     ).bind(userId),
     DB.prepare(
       `SELECT q.id, q.subject_id AS subjectId, q.source_ref AS ref, q.marks, q.difficulty, q.state_pct_correct AS statePct,
-              q.format, t.id AS topicId, t.chapter_id AS chapterId
+              q.format, t.id AS topicId, t.chapter_id AS chapterId,
+              (SELECT x.question_type_id FROM question_type_tags x WHERE x.question_id = q.id AND x.is_primary = 1) AS typeId
          FROM questions q
          JOIN question_topics qt ON qt.question_id = q.id AND qt.is_primary = 1
          JOIN topics t ON t.id = qt.topic_id
@@ -97,6 +98,11 @@ export async function buildDashboard(DB, userId, opts = {}) {
       userId,
       addDays(today, -400),
     ),
+    DB.prepare(
+      `SELECT qt.id, qt.name, qt.subject_id AS subjectId, coalesce(qt.colour, a.colour, 'default') AS colour
+         FROM question_types qt LEFT JOIN study_areas a ON a.id = qt.study_area_id
+        WHERE qt.subject_id IN (SELECT c.subject_id FROM class_members cm JOIN classes c ON c.id = cm.class_id AND c.is_archived = 0 WHERE cm.user_id = ?1 AND cm.role = 'student')`,
+    ).bind(userId),
   ]);
 
   /** @type {any[]} */ const classes = classesRes.results;
@@ -194,8 +200,10 @@ export async function buildDashboard(DB, userId, opts = {}) {
     if (todaysSets.has(subjectId)) continue;
     const eligible = /** @type {Question[]} */ (questionRows.filter((q) => q.subjectId === subjectId && open.has(q.chapterId)));
     if (!eligible.length) continue;
-    const subjectTopics = new Map([...tStats].filter(([t]) => eligible.some((q) => q.topicId === t)));
-    const items = pickDailySet({ questions: eligible, stats, topics: subjectTopics, today, seed: `${userId}:${subjectId}:${today}` });
+    // Mastery is tracked per question type (as in Pixel Practice), falling back to the topic.
+    const skillQs = eligible.map((q) => ({ ...q, topicId: /** @type {any} */ (q).typeId ?? q.topicId }));
+    const skillTopics = topicStats(attempts, new Map(skillQs.map((q) => [q.id, q.topicId])), now);
+    const items = pickDailySet({ questions: skillQs, stats, topics: skillTopics, today, seed: `${userId}:${subjectId}:${today}` });
     if (!items.length) continue;
     toCreate.push({ subjectId, items });
   }
@@ -283,6 +291,8 @@ export async function buildDashboard(DB, userId, opts = {}) {
   });
 
   // ---- Overall progress per subject ----------------------------------------------------------
+  const typeById = new Map(/** @type {any[]} */ (typesRes.results).map((t) => [t.id, t]));
+  const typeStats = topicStats(attempts, new Map(questionRows.filter((q) => q.typeId).map((q) => [q.id, q.typeId])), now);
   const progressBySubject = [...subjects.values()].map((s) => {
     const chs = chaptersBySubject.get(s.id) ?? [];
     const qs = questionRows.filter((q) => q.subjectId === s.id);
@@ -297,11 +307,17 @@ export async function buildDashboard(DB, userId, opts = {}) {
       marks += q.marks;
     }
     const ms = qs.map((q) => q.topicId).filter((t, i, arr) => arr.indexOf(t) === i).map((t) => tStats.get(t)?.mastery).filter((m) => m != null);
+    const weakTypes = [...typeStats]
+      .filter(([id, t]) => typeById.get(id)?.subjectId === s.id && t.attempts >= 2 && t.mastery != null && t.mastery < 0.7)
+      .sort((a, b) => /** @type {number} */ (a[1].mastery) - /** @type {number} */ (b[1].mastery))
+      .slice(0, 4)
+      .map(([id, t]) => ({ id, name: typeById.get(id).name, colour: typeById.get(id).colour, mastery: Math.round(100 * /** @type {number} */ (t.mastery)), attempts: t.attempts }));
     return {
       subjectId: s.id,
       code: s.code,
       name: s.name,
       classes: s.classes,
+      weakTypes,
       questions: qs.length,
       attempted,
       coveragePct: pct(attempted, qs.length) ?? 0,
