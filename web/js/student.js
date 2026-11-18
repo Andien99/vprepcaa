@@ -238,6 +238,7 @@ function renderProgress(d) {
       <span class="ico ${esc(s.code)}">${esc(s.code.replace(/34$/, ''))}</span>
       <div><div class="l1"><span>${s.attempted} of ${s.questions} questions</span><span>${s.scorePct != null ? `${s.scorePct}% of marks` : 'no marks yet'}</span></div>${bar(s.coveragePct)}</div>
       <div class="l3"><span class="tg good">${counts.completed} chapter${counts.completed === 1 ? '' : 's'} completed</span><span class="tg">${remaining} remaining</span>${counts.in_progress ? `<span class="tg retrieval">${counts.in_progress} in progress</span>` : ''}${counts.locked ? `<span class="tg line">${counts.locked} not open yet</span>` : ''}${s.fixDue ? `<span class="tg fix">${s.fixDue} to fix</span>` : ''}</div>
+      ${s.weakTypes?.length ? `<div class="l3"><span class="muted small" style="align-self:center">Work on:</span>${s.weakTypes.map((/** @type {any} */ t) => `<a class="nt nc-${esc(t.colour)}" style="text-decoration:none" href="/bank/?subject=${esc(s.code)}&amp;type=${encodeURIComponent(t.id)}" title="${t.mastery}% mastery over ${t.attempts} answers">${esc(t.name)} · ${t.mastery}%</a>`).join('')}</div>` : ''}
     </div>`;
   $('prog-head').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
     b.addEventListener('click', () => {
@@ -419,7 +420,14 @@ async function refresh() {
   } else {
     // Teachers: classes and the create form sit on the page itself.
     const dlg = /** @type {HTMLDialogElement} */ ($('classes-dialog'));
-    if (dlg.isConnected && $('classes-wrap').parentElement === dlg) $('teacher-area').append($('classes-wrap'));
+    if (dlg.isConnected && $('classes-wrap').parentElement === dlg) {
+      $('teacher-area').insertAdjacentHTML(
+        'beforeend',
+        `<section class="card"><div class="page-head"><h2 style="margin:0">📚 Question bank</h2><a class="btn btn-small" href="/bank/">Open the bank</a></div>
+         <p class="muted" style="margin:.5rem 0 0">Every exam question with its question type, study design area, paper and state results, colour-coded as in Notion. ${me.role === 'admin' ? 'Edit questions and solutions, add new exams, and manage question types and areas.' : "Browse the shared VCAA bank, and add and edit your school's own papers and questions."}</p></section>`,
+      );
+      $('teacher-area').append($('classes-wrap'));
+    }
     $('who').hidden = false;
     $('who').textContent = `Signed in as ${me.email} · ${me.role}`;
   }

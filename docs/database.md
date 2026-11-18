@@ -11,9 +11,12 @@ The relational database behind vprepcaa: accounts, schools, classes, the global 
 | `migrations/0004_assignments.sql` | assignments, assignment_questions, assignment_submissions |
 | `migrations/0005_progress.sql` | question_attempts, student_progress, achievements, user_achievements |
 | `migrations/0006_seed_subjects.sql` | The three subjects classes can be created for (GEN34, MM34, CHEM34) |
+| `migrations/0007_daily_sets.sql` | daily_sets: each student's daily questions, stored per day |
+| `migrations/0008_question_bank.sql` | The question bank (Notion design): study_areas, question_types, question_type_tags, question_area_tags, papers, question_stars, and new question columns |
 | `worker/src/db/schema.js` | Drizzle definitions of the same tables, for queries and drizzle-kit |
 | `seeds/dev.sql` | Small fictional test environment (local only) |
 | `tests/db/schema.test.mjs` | 53 checks: upgrade from 0000, constraints, access rules, cascades |
+| `tests/bank/bank.test.mjs` | 58 checks: naming conventions, bank visibility, stars, editing permissions, new papers and questions, taxonomy merge, pick-mode practice |
 | `tests/auth/auth-writes.test.mjs` | 12 checks: Better Auth's own sign-in write paths on local D1 (encryption, id_token, allowlist, suspended users) |
 | `scripts/dev-cookie.mjs` | Signed session cookie for a seeded user (local testing without Google) |
 
@@ -155,6 +158,8 @@ Every practice question: VCAA exam, SAC, textbook or custom.
   - Parent of question_topics and student_progress (`CASCADE`).
   - Parent of question_attempts and assignment_questions (`RESTRICT`): a question that has been answered, or is on an assignment, can only be retired.
 
+Added in 0008 for the question bank: `paper_id → papers` (`SET NULL`), `state_avg` (0–1, mean score as a share of marks), `zero_pct` (0–100, share of students who scored zero), `how_often` (`every_year`, `two_of_three`, `repeated_within_year`, `once`, `not_classified`), `top_distractor` (e.g. `C (29%)`), `tag_source` (`keyword`, `ocr_verify`, `solutions`, `reviewed`) and `updated_by`.
+
 #### `question_topics`
 Many-to-many tags between questions and topics, matching the bank's multi-valued topics. Primary key `(question_id, topic_id)`. Exactly one tag per question may be primary (a partial unique index). **The primary topic's chapter decides whether a student can see the question.**
 - **Relationships**: `question_id → questions` (`CASCADE`), `topic_id → topics` (`RESTRICT`).
@@ -189,6 +194,41 @@ How the code survives the Google redirect:
 3. The dashboard calls `POST /api/v1/join/finish` to confirm and clear the cookie.
 
 Signed-in students join more classes with `POST /api/v1/classes/join`. Teacher and admin accounts are never enrolled as students. Codes of archived classes stop working. `GET /api/v1/join/:code` shows only the class name, subject, school and year. Tests: `tests/auth/join.test.mjs`.
+
+### Question bank (migration 0008)
+
+The Notion question bank rebuilt in D1. A question carries three classifications: its **chapter topic** (`question_topics`, which decides access), its **question type** and its **study design area** (both for filtering, colour and mastery).
+
+#### `study_areas`
+A subject's Areas of Study, each with a Notion colour (`default gray brown orange yellow green blue purple pink red`). Unique `(subject_id, code)`. Imported colours: Methods AoS1 blue, AoS2 green, AoS3 purple, AoS4 orange; General Data blue, Recursion green, Matrices yellow, Networks red; Chemistry U3A1 blue, U3A2 green, U4A1 purple, U4A2 orange, Cross gray.
+
+#### `question_types`
+The skill a question tests ("Boxplot construction and interpretation"). Unique name per subject; belongs to one study area; `colour` NULL means it takes the area's colour. `is_active = 0` hides a type without losing its tags. It is the unit for daily-set mastery and the dashboard's weak spots (falling back to the primary topic when a question has no type).
+
+#### `question_type_tags`, `question_area_tags`
+Many-to-many tags. One type tag per question may be primary (partial unique index); the first in an edit is primary. Both cascade from the question.
+
+#### `papers`
+One exam paper or SAC. `code` follows Notion (`2024_VCAA_E1`, `2023_VCAA-NHT_E2`, Chemistry `2024_VCAA`, school papers `2025_SAC2`); `source` is `vcaa`, `vcaa_nht`, `sac`, `trial` or `other`. `school_id IS NULL` is shared; otherwise the paper is private to the school. Codes are unique among shared papers and per school (two partial indexes).
+
+#### `question_stars`
+A user's starred questions, primary key `(user_id, question_id)`.
+
+#### Question names
+`web/js/naming.js` (used by the browser and the Worker) builds names the Notion way:
+- General: `2024 E2 Q13`, `2017 E2 M2 Q1`, `2023 NHT E2 Q4` (multiple choice is still `Q`).
+- Methods: `2024 E2 MC7`, `2024 E1 Q3`, `2026NHT E2 MC9`.
+- Chemistry: `2017 A Q1`, `2017 B Q5` (section, no exam number).
+New questions get these names automatically; the name stays editable and must be unique within the subject.
+
+#### Who can edit
+| | Shared VCAA bank | Their school's papers and questions | Question types and areas |
+| --- | --- | --- | --- |
+| Student | read (open chapters, published, in study design) | read | — |
+| Teacher / school admin | read everything, incl. drafts and answers | add and edit | — |
+| Admin | add and edit | add and edit | add, rename, recolour, merge |
+
+New questions start as drafts (`is_active = 0`) until published. Merging a type moves its tags onto the other type, keeps each question's primary tag and deletes the old type.
 
 ### Student progress
 
@@ -341,10 +381,12 @@ The Pixel Practice banks (`vcaa-bank.zip` for General and Methods, `chem-bank.zi
 npm run import:bank -- --vcaa ../banks/vcaa --chem ../banks/chem
 npx wrangler d1 execute vprepcaa-db --remote --file=content/import/01_curriculum.sql
 npx wrangler d1 execute vprepcaa-db --remote --file=content/import/02_questions.sql
+npx wrangler d1 execute vprepcaa-db --remote --file=content/import/03_bank.sql   # areas, types, papers, tags, exam stats
 npm run upload:content -- --remote          # images and solutions to the private R2 bucket
 ```
 
 - Curriculum: General chapters are the Cambridge chapters (1–5, 7, 8, 10, 11, 13, 14; revision chapters left out) with exercises as topics; Methods chapters are the four Areas of Study with the 13 Pixel Practice topics; Chemistry chapters are the four Unit/AoS areas plus Cross-topic, with the 53 question types as topics. A question is tagged with all its topics; the first is primary.
+- `03_bank.sql` (needs migration 0008) writes the bank design: General 18 papers, 4 areas, 63 types; Methods 28 papers, 4 areas, 58 types; Chemistry 9 papers, 5 areas, 53 types. Each type goes in the area most of its questions are in. Type ids are `qt_<subject>_<slug>` and paper ids `pp_<subject>_<code>`, so it re-runs safely.
 - Question ids are `q_<Notion page id>`, so a re-import updates rows in place (statements are upserts) and keeps every attempt linked.
 - R2 keys: `q/<gen34|mm34|chem34>/<ref>.png` for question images, `s/<subject>/<question id>.json` for solutions: `{ ref, sec: [{t, md}], parts: [{label, marks, avg, zeroPct, solution, notes}] }`. `parts` splits a written question for self-marking (`scripts/lib/solution-parts.mjs`): 129/142 General, 109/186 Methods and 84/84 Chemistry written questions split; the rest are single-part and are marked whole.
 - `npm run upload:content` with no flags writes to local R2 in-process (about 15 seconds for the whole bank); `--remote` uploads with wrangler and can be resumed.

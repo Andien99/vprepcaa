@@ -9,6 +9,8 @@
 // bank holds exam questions, answer keys and solutions):
 //   content/import/01_curriculum.sql   chapters and topics for GEN34, MM34, CHEM34
 //   content/import/02_questions.sql    questions + question_topics (upserts, safe to re-run)
+//   content/import/03_bank.sql         the Notion bank design: papers, study design areas,
+//                                      question types (coloured), their tags, state stats
 //   content/r2/q/<subject>/<file>.png  question images  -> R2 key q/<subject>/<file>.png
 //   content/r2/s/<subject>/<id>.json   solution bundles -> R2 key s/<subject>/<id>.json
 //                                      ({ ref, sec, parts }: parts split per question part, see lib/solution-parts.mjs)
@@ -29,6 +31,7 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { solutionParts } from './lib/solution-parts.mjs';
+import { paperCode, paperName } from '../web/js/naming.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((/** @type {string[][]} */ acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
@@ -248,6 +251,87 @@ function importQuestions(subject, meta, content, imageDir, topicMap) {
   summary.subjects[subject] = { questions: count, withoutImage: noImage, untagged, writtenSplitIntoParts: split };
 }
 
+// ---- Notion bank design: papers, study design areas, question types --------------------
+
+/** Study design areas per subject, with their Notion colours. `match` is the bank's own label. */
+const AREAS = {
+  general: [
+    ['DATA', 'Data analysis', 'blue'],
+    ['RECUR', 'Recursion and financial modelling', 'green'],
+    ['MATRIX', 'Matrices', 'yellow'],
+    ['NETWORK', 'Networks and decision mathematics', 'red'],
+  ],
+  methods: [
+    ['AOS1', 'AoS1 Functions relations and graphs', 'blue'],
+    ['AOS2', 'AoS2 Algebra number and structure', 'green'],
+    ['AOS3', 'AoS3 Calculus', 'purple'],
+    ['AOS4', 'AoS4 Data analysis probability and statistics', 'orange'],
+  ],
+  chemistry: [
+    ['U3A1', 'U3 AoS1 Energy options', 'blue'],
+    ['U3A2', 'U3 AoS2 Rate yield and electrolysis', 'green'],
+    ['U4A1', 'U4 AoS1 Organic categorisation and synthesis', 'purple'],
+    ['U4A2', 'U4 AoS2 Analysis and use of organic compounds', 'orange'],
+    ['CROSS', 'Cross-topic', 'gray'],
+  ],
+};
+const HOW_OFTEN = /** @type {Record<string, string>} */ ({ 'Every year': 'every_year', 'Two of three years': 'two_of_three', 'Repeated within one year': 'repeated_within_year', 'Once only': 'once', 'Not classified': 'not_classified' });
+const bankSql = /** @type {string[]} */ ([]);
+const bankSummary = /** @type {Record<string, any>} */ ({});
+
+/** @param {'general' | 'methods' | 'chemistry'} subject @param {any[]} meta */
+function bankDesign(subject, meta) {
+  const s = SUBJECT_SLUG[subject];
+  const subjectId = SUBJECT[subject];
+  const areaId = (/** @type {string} */ code) => `sa_${s}_${code.toLowerCase()}`;
+  const byName = new Map(AREAS[subject].map(([code, name]) => [name.toLowerCase(), code]));
+  const areaOf = (/** @type {string} */ label) => byName.get(String(label).toLowerCase()) ?? null;
+  AREAS[subject].forEach(([code, name, colour], i) =>
+    bankSql.push(`INSERT INTO study_areas (id, subject_id, code, name, colour, position) VALUES (${q(areaId(code))}, ${q(subjectId)}, ${q(code)}, ${q(name)}, ${q(colour)}, ${i + 1}) ON CONFLICT (id) DO UPDATE SET name = excluded.name, position = excluded.position;`),
+  );
+  // Each question type sits in the study area its questions most often carry.
+  const typeArea = new Map();
+  for (const qn of meta) for (const ty of qn.ty ?? []) for (const ar of qn.ar ?? []) bump(typeArea, ty, ar);
+  const types = [...new Set(meta.flatMap((qn) => qn.ty ?? []))].sort();
+  const typeId = (/** @type {string} */ ty) => `qt_${s}_${slug(ty)}`;
+  types.forEach((ty, i) => {
+    const code = areaOf(top(typeArea.get(ty)) ?? '');
+    bankSql.push(
+      `INSERT INTO question_types (id, subject_id, study_area_id, name, position) VALUES (${q(typeId(ty))}, ${q(subjectId)}, ${q(code ? areaId(code) : null)}, ${q(ty)}, ${i + 1}) ON CONFLICT (id) DO UPDATE SET study_area_id = excluded.study_area_id, name = excluded.name;`,
+    );
+  });
+  // Papers
+  const papers = new Map();
+  for (const qn of meta) {
+    const exam = subject === 'chemistry' ? null : qn.e === 1 ? 'E1' : qn.e === 2 ? 'E2' : null;
+    const p = { year: qn.y, nht: !!qn.n, exam };
+    const code = paperCode(p);
+    papers.set(code, { ...p, code, name: paperName(p) });
+    qn.__paper = code;
+  }
+  const paperId = (/** @type {string} */ code) => `pp_${s}_${code.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+  for (const p of papers.values())
+    bankSql.push(
+      `INSERT INTO papers (id, subject_id, code, name, source, year, exam) VALUES (${q(paperId(p.code))}, ${q(subjectId)}, ${q(p.code)}, ${q(p.name)}, ${q(p.nht ? 'vcaa_nht' : 'vcaa')}, ${p.year}, ${q(p.exam)}) ON CONFLICT (id) DO UPDATE SET name = excluded.name;`,
+    );
+  // Per question: paper, stats, tags
+  let tagged = 0;
+  for (const qn of meta) {
+    const id = `q_${qn.id}`;
+    const zero = typeof qn.z === 'number' ? Math.round(Math.max(0, Math.min(1, qn.z)) * 1000) / 10 : null;
+    bankSql.push(
+      `UPDATE questions SET paper_id = ${q(paperId(qn.__paper))}, state_avg = ${q(typeof qn.sa === 'number' ? qn.sa : null)}, zero_pct = ${q(zero)}, how_often = ${q(HOW_OFTEN[qn.ho] ?? null)}, top_distractor = ${q(qn.td ?? null)} WHERE id = ${q(id)};`,
+      `DELETE FROM question_type_tags WHERE question_id = ${q(id)};`,
+      `DELETE FROM question_area_tags WHERE question_id = ${q(id)};`,
+    );
+    (qn.ty ?? []).forEach((ty, i) => bankSql.push(`INSERT OR IGNORE INTO question_type_tags (question_id, question_type_id, is_primary) SELECT ${q(id)}, ${q(typeId(ty))}, ${i === 0 ? 1 : 0} WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${q(id)});`));
+    for (const ar of new Set((qn.ar ?? []).map(areaOf).filter(Boolean)))
+      bankSql.push(`INSERT OR IGNORE INTO question_area_tags (question_id, study_area_id) SELECT ${q(id)}, ${q(areaId(/** @type {string} */ (ar)))} WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${q(id)});`);
+    if (qn.ty?.length) tagged++;
+  }
+  bankSummary[subject] = { areas: AREAS[subject].length, questionTypes: types.length, papers: papers.size, questionsWithType: tagged };
+}
+
 // ---- Run ---------------------------------------------------------------------------
 
 mkdirSync(join(OUT, 'import'), { recursive: true });
@@ -258,11 +342,14 @@ if (args.vcaa) {
   const methodsMap = buildMethods(bank.meta.methods);
   importQuestions('general', bank.meta.general, bank.content.general, join(resolve(args.vcaa), 'images', 'general'), generalMap);
   importQuestions('methods', bank.meta.methods, bank.content.methods, join(resolve(args.vcaa), 'images', 'methods'), methodsMap);
+  bankDesign('general', bank.meta.general);
+  bankDesign('methods', bank.meta.methods);
 }
 if (args.chem) {
   const bank = loadBank(args.chem);
   const chemMap = buildChemistry(bank.meta.chemistry);
   importQuestions('chemistry', bank.meta.chemistry, bank.content.chemistry, join(resolve(args.chem), 'images', 'chemistry'), chemMap);
+  bankDesign('chemistry', bank.meta.chemistry);
 }
 
 const curriculum = [
@@ -272,9 +359,12 @@ const curriculum = [
 ];
 writeFileSync(join(OUT, 'import', '01_curriculum.sql'), curriculum.join('\n') + '\n');
 writeFileSync(join(OUT, 'import', '02_questions.sql'), ['-- Generated by scripts/import-bank.mjs. Exam content: never commit.', ...statements].join('\n') + '\n');
+writeFileSync(join(OUT, 'import', '03_bank.sql'), ['-- Generated by scripts/import-bank.mjs: papers, study design areas, question types and tags.', ...bankSql].join('\n') + '\n');
+summary.bank = bankSummary;
 summary.chapters = chapters.length;
 summary.topics = topics.length;
 writeFileSync(join(OUT, 'import', 'summary.json'), JSON.stringify(summary, null, 2));
 console.log(`chapters ${chapters.length}, topics ${topics.length}`);
+for (const [s, v] of Object.entries(bankSummary)) console.log(`${s}: ${v.papers} papers, ${v.areas} study design areas, ${v.questionTypes} question types`);
 for (const [s, v] of Object.entries(summary.subjects)) console.log(`${s}: ${v.questions} questions (${v.withoutImage} without an image, ${v.untagged} skipped)`);
 console.log(`Wrote ${join(OUT, 'import')} and ${join(OUT, 'r2')}`);

@@ -230,8 +230,17 @@ export const questions = sqliteTable(
     createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // Migration 0008 (question bank). Column CHECKs live in the SQL migration.
+    paperId: text('paper_id').references(() => papers.id, { onDelete: 'set null' }),
+    stateAvg: real('state_avg'),
+    zeroPct: real('zero_pct'),
+    howOften: text('how_often'), // 'every_year' | 'two_of_three' | 'repeated_within_year' | 'once' | 'not_classified'
+    topDistractor: text('top_distractor'),
+    tagSource: text('tag_source'), // 'keyword' | 'ocr_verify' | 'solutions' | 'reviewed'
+    updatedBy: text('updated_by').references(() => user.id, { onDelete: 'set null' }),
   },
   (t) => [
+    index('ix_questions_paper').on(t.paperId),
     uniqueIndex('ux_questions_source_global').on(t.subjectId, t.sourceRef).where(sql`${t.schoolId} IS NULL`),
     uniqueIndex('ux_questions_source_school').on(t.subjectId, t.schoolId, t.sourceRef).where(sql`${t.schoolId} IS NOT NULL`),
     index('ix_questions_subject_paper').on(t.subjectId, t.year, t.exam),
@@ -598,4 +607,104 @@ export const dailySets = sqliteTable(
     check('ck_daily_sets_date', sql`${t.setDate} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`),
     check('ck_daily_sets_items', sql`json_valid(${t.itemsJson}) AND json_type(${t.itemsJson}) = 'array'`),
   ],
+);
+
+// ===========================================================================
+// QUESTION BANK (migration 0008): the Notion question-bank design
+// ===========================================================================
+
+const COLOURS = `'default', 'gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'`;
+
+export const studyAreas = sqliteTable(
+  'study_areas',
+  {
+    id: text('id').primaryKey(),
+    subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    colour: text('colour').notNull().default('default'),
+    position: integer('position').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('ux_study_areas_code').on(t.subjectId, t.code), check('ck_study_areas_colour', sql.raw(`"colour" IN (${COLOURS})`))],
+);
+
+export const questionTypes = sqliteTable(
+  'question_types',
+  {
+    id: text('id').primaryKey(),
+    subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    studyAreaId: text('study_area_id').references(() => studyAreas.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    colour: text('colour'),
+    position: integer('position').notNull().default(0),
+    isActive: bool('is_active').notNull().default(true),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('ux_question_types_name').on(t.subjectId, t.name),
+    index('ix_question_types_area').on(t.studyAreaId),
+    check('ck_question_types_colour', sql.raw(`"colour" IS NULL OR "colour" IN (${COLOURS})`)),
+  ],
+);
+
+export const questionTypeTags = sqliteTable(
+  'question_type_tags',
+  {
+    questionId: text('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
+    questionTypeId: text('question_type_id').notNull().references(() => questionTypes.id, { onDelete: 'cascade' }),
+    isPrimary: bool('is_primary').notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.questionId, t.questionTypeId] }),
+    uniqueIndex('ux_question_type_tags_primary').on(t.questionId).where(sql`${t.isPrimary} = 1`),
+    index('ix_question_type_tags_type').on(t.questionTypeId),
+  ],
+);
+
+export const questionAreaTags = sqliteTable(
+  'question_area_tags',
+  {
+    questionId: text('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
+    studyAreaId: text('study_area_id').notNull().references(() => studyAreas.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.questionId, t.studyAreaId] }), index('ix_question_area_tags_area').on(t.studyAreaId)],
+);
+
+export const papers = sqliteTable(
+  'papers',
+  {
+    id: text('id').primaryKey(),
+    subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    schoolId: text('school_id').references(() => schools.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    source: text('source').notNull().default('vcaa'), // 'vcaa' | 'vcaa_nht' | 'sac' | 'trial' | 'other'
+    year: integer('year'),
+    exam: text('exam'),
+    isPublished: bool('is_published').notNull().default(true),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('ux_papers_code_global').on(t.subjectId, t.code).where(sql`${t.schoolId} IS NULL`),
+    uniqueIndex('ux_papers_code_school').on(t.subjectId, t.schoolId, t.code).where(sql`${t.schoolId} IS NOT NULL`),
+    check('ck_papers_source', sql`${t.source} IN ('vcaa', 'vcaa_nht', 'sac', 'trial', 'other')`),
+    check('ck_papers_year', sql`${t.year} IS NULL OR ${t.year} BETWEEN 2000 AND 2100`),
+    check('ck_papers_exam', sql`${t.exam} IS NULL OR ${t.exam} IN ('E1', 'E2')`),
+  ],
+);
+
+export const questionStars = sqliteTable(
+  'question_stars',
+  {
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    questionId: text('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.questionId] })],
 );

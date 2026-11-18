@@ -30,6 +30,13 @@ export function renderAccountNav(me) {
     avatar.append(img);
   } else avatar.textContent = first.charAt(0).toUpperCase();
   nav.append(name, avatar);
+  if (!location.pathname.startsWith('/bank')) {
+    const b = document.createElement('a');
+    b.className = 'btn btn-header btn-secondary';
+    b.href = '/bank/';
+    b.textContent = 'Question bank';
+    nav.prepend(b);
+  }
   if (!onDashboard) {
     const a = document.createElement('a');
     a.className = 'btn btn-header';
