@@ -23,7 +23,14 @@ npm run db:migrate:local      # apply migrations to the local D1 (.wrangler/stat
 npm run db:seed:local         # load seeds/dev.sql locally (never --remote)
 npm test                      # schema tests + Better Auth write-path tests (also in CI)
 npm run db:migrate:remote     # production, see "Applying 0001 to production" first
+npm run db:migrate:preview    # the branch-Preview database (vprepcaa-db-preview)
 ```
+
+### Branch Previews
+
+Workers Builds deploys every non-`main` branch with `npx wrangler preview`. The `previews` block in `wrangler.jsonc` points Previews at their own D1 database (`vprepcaa-db-preview`) and R2 bucket (`vprepcaa-content-preview`), so a Preview never reads or writes production data. Apply migrations there with `npm run db:migrate:preview` before pushing a branch that needs them.
+
+Previews have no fixed `BETTER_AUTH_URL`. Better Auth takes the host from the request, limited to `AUTH_ALLOWED_HOSTS` (`*.workers.dev`). Sign-in on a Preview stays off (500) until a preview `BETTER_AUTH_SECRET` is set, because `createAuth` refuses to run without a secret instead of falling back to Better Auth's built-in default. Google sign-in also won't work there unless the preview hostname is added to the OAuth client's redirect URIs.
 
 New schema changes: edit `worker/src/db/schema.js`, run `npx drizzle-kit generate --name <change>`, review the SQL, then add any triggers or views by hand. Never edit a migration that has been applied remotely. `npx drizzle-kit generate` currently reports "No schema changes", which confirms `schema.js` and the snapshot agree.
 

@@ -9,9 +9,15 @@ import { getDb, schema } from '../db/client.js';
  * @param {import('../lib/env.js').Env} env
  */
 export function createAuth(env) {
+  // Refuse to run rather than fall back to Better Auth's built-in default secret
+  // (e.g. a branch Preview whose secret hasn't been set yet).
+  if (!env.BETTER_AUTH_SECRET) throw new Error('BETTER_AUTH_SECRET is not set');
   const db = getDb(env);
   return betterAuth({
-    baseURL: env.BETTER_AUTH_URL,
+    // Production: fixed URL. Previews: host taken from the request, limited to AUTH_ALLOWED_HOSTS.
+    baseURL: env.BETTER_AUTH_URL
+      ? env.BETTER_AUTH_URL
+      : { allowedHosts: String(env.AUTH_ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean), protocol: 'https' },
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: 'sqlite', schema }),
     socialProviders: {
