@@ -9,6 +9,12 @@
     // Only /api/* runs the Worker first; everything else is served as a static file.
     "run_worker_first": ["/api/*"],
     "not_found_handling": "404-page"
+  },
+  // Public values only. Secrets (GOOGLE_CLIENT_SECRET, BETTER_AUTH_SECRET) are set in the
+  // Cloudflare dashboard and never committed.
+  "vars": {
+    "BETTER_AUTH_URL": "https://vprepcaa.com",
+    "GOOGLE_CLIENT_ID": "664348467235-fu2jq5sqeknt1q427r5ass1f4tba5mqc.apps.googleusercontent.com"
   }
   // D1 (DB) and R2 (CONTENT) bindings are added in Step 0b, once the resources exist.
 }
