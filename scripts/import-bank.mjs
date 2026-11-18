@@ -11,6 +11,7 @@
 //   content/import/02_questions.sql    questions + question_topics (upserts, safe to re-run)
 //   content/r2/q/<subject>/<file>.png  question images  -> R2 key q/<subject>/<file>.png
 //   content/r2/s/<subject>/<id>.json   solution bundles -> R2 key s/<subject>/<id>.json
+//                                      ({ ref, sec, parts }: parts split per question part, see lib/solution-parts.mjs)
 //   content/import/summary.json        counts and anything skipped
 //
 // Then:
@@ -27,6 +28,7 @@
 // primary topic's chapter decides who can see it.
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { solutionParts } from './lib/solution-parts.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((/** @type {string[][]} */ acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
@@ -185,6 +187,7 @@ function importQuestions(subject, meta, content, imageDir, topicMap) {
   let count = 0;
   let noImage = 0;
   let untagged = 0;
+  let split = 0;
 
   for (const qn of meta) {
     const ref = String(qn.ref).trim();
@@ -208,10 +211,14 @@ function importQuestions(subject, meta, content, imageDir, topicMap) {
     // Solution bundle: the bank's solution sections, as the Pixel Practice app used them.
     const c = content?.[qn.id];
     let solutionKey = null;
+    let parts = 0;
     if (c?.sec?.length) {
       solutionKey = `s/${s}/${id}.json`;
-      writeFileSync(join(OUT, 'r2', solutionKey), JSON.stringify({ ref, sec: c.sec }));
+      const pieces = qn.mc ? [] : solutionParts(subject, c, Math.max(1, Math.round(Number(qn.mk) || 1)));
+      parts = pieces.length;
+      writeFileSync(join(OUT, 'r2', solutionKey), JSON.stringify({ ref, sec: c.sec, parts: pieces }));
     }
+    if (parts) split++;
 
     const exam = subject === 'chemistry' ? null : qn.e === 1 ? 'E1' : qn.e === 2 ? 'E2' : null;
     const module = ref.match(/\bM(\d)\b/)?.[1];
@@ -238,7 +245,7 @@ function importQuestions(subject, meta, content, imageDir, topicMap) {
     topicIds.forEach((t, i) => statements.push(`INSERT INTO question_topics (question_id, topic_id, is_primary) VALUES (${q(id)}, ${q(t)}, ${i === 0 ? 1 : 0});`));
     count++;
   }
-  summary.subjects[subject] = { questions: count, withoutImage: noImage, untagged };
+  summary.subjects[subject] = { questions: count, withoutImage: noImage, untagged, writtenSplitIntoParts: split };
 }
 
 // ---- Run ---------------------------------------------------------------------------
