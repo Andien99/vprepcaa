@@ -59,9 +59,7 @@ INSERT INTO school_members (id, school_id, user_id, role) VALUES
   ('sm_student5', 'sch_test', 'usr_student5', 'student');
 
 -- ===== CURRICULUM (global) ==================================================
-INSERT INTO subjects (id, code, name, study_design, position) VALUES
-  ('sub_gen34', 'GEN34', 'General Mathematics Units 3&4',  '2023-2027', 1),
-  ('sub_mm34',  'MM34',  'Mathematical Methods Units 3&4', '2023-2027', 2);
+-- Subjects come from migrations/0006_seed_subjects.sql.
 
 INSERT INTO chapters (id, subject_id, code, title, position) VALUES
   ('ch_gen_1', 'sub_gen34', 'CH1', 'Investigating data distributions',   1),
@@ -107,8 +105,8 @@ INSERT INTO question_topics (question_id, topic_id, is_primary) VALUES
 -- ===== CLASSES ==============================================================
 INSERT INTO classes (id, school_id, subject_id, name, academic_year, join_code, default_chapter_access, created_by) VALUES
   ('cls_12gen_a', 'sch_test', 'sub_gen34', '12GEN-A',          2026, 'GENA26', 'locked', 'usr_teacher1'),
-  ('cls_12mm_a',  'sch_test', 'sub_mm34',  '12MM-A',           2026, 'MMA26',  'open',   'usr_teacher2'),
-  ('cls_tutor',   NULL,       'sub_gen34', 'Tuesday tutoring', 2026, 'TUE26',  'open',   'usr_admin');   -- no school
+  ('cls_12mm_a',  'sch_test', 'sub_mm34',  '12MM-A',           2026, 'MMAB26', 'open',   'usr_teacher2'),
+  ('cls_tutor',   NULL,       'sub_gen34', 'Tuesday tutoring', 2026, 'TUES26', 'open',   'usr_admin');   -- no school
 
 INSERT INTO class_members (id, class_id, user_id, role) VALUES
   -- 12GEN-A: teacher1 + admin co-teaching; students 1-3 and 5

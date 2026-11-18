@@ -7,7 +7,10 @@
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<header><a href="/">vprepcaa</a></header>
+<header class="site-header">
+  <a class="brand" href="/">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"><a class="btn btn-header" href="/signin">Sign in</a></nav>
+</header>
 <main>
   <h1>Privacy policy</h1>
   <p><strong>Draft, last updated 18 November 2026.</strong> vprepcaa is run by Andy, a secondary school mathematics teacher in Victoria, Australia.</p>
@@ -32,5 +35,6 @@
   <p><a href="mailto:vprepcaa@gmail.com">vprepcaa@gmail.com</a></p>
 </main>
 <footer>vprepcaa is an independent teaching resource. It is not published or endorsed by the VCAA.</footer>
+<script type="module">import { initHeader } from '/js/header.js'; initHeader();</script>
 </body>
 </html>

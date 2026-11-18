@@ -8,17 +8,52 @@
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<header><a href="/">vprepcaa</a></header>
+<header class="site-header">
+  <a class="brand" href="/">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"><a class="btn btn-header" href="/signin">Sign in</a></nav>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <h1>VCAA exam practice for Victorian students</h1>
+      <p class="lead">Work through past VCAA exam questions by topic, mark your own work, and see which areas need more practice. Teachers see how their classes are going and set work.</p>
+    </div>
+    <form id="join-form" class="card join-card" novalidate>
+      <h2>Join your class</h2>
+      <p>Enter the class code from your teacher.</p>
+      <label class="sr-only" for="join-code">Class code</label>
+      <input id="join-code" class="code-input" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7Q3MZ" required>
+      <button class="btn btn-block" type="submit">Join class</button>
+      <p id="join-message" class="form-message" role="alert"></p>
+      <p class="muted small">Already have an account? <a href="/signin">Sign in</a></p>
+    </form>
+  </div>
+</section>
+
 <main>
-  <h1>VCAA exam practice for Victorian students</h1>
-  <p>vprepcaa is a free practice site for Victorian Certificate of Education (VCE) students. Students work through past VCAA exam questions by topic, mark their own work, and see which areas need more practice. Teachers can see how their classes are progressing and set work.</p>
+  <div class="features">
+    <div class="feature">
+      <h3>Practise by topic</h3>
+      <p>Past VCAA questions grouped by topic and question type, from General Mathematics, Mathematical Methods and Chemistry.</p>
+    </div>
+    <div class="feature">
+      <h3>Know what to revise</h3>
+      <p>Spaced repetition brings back the questions you got wrong, so your revision goes where it's needed.</p>
+    </div>
+    <div class="feature">
+      <h3>Made for classes</h3>
+      <p>Teachers create a class, share its code, and see their students' progress in one place.</p>
+    </div>
+  </div>
+
   <h2>Who it is for</h2>
-  <p>Students and teachers at Victorian secondary schools. Students sign in with a Google account provided by their school or their own.</p>
+  <p>Students and teachers at Victorian secondary schools. Students sign in with a Google account, either one from their school or their own, and join their teacher's class with a code.</p>
   <h2>Status</h2>
-  <p>The site is being rebuilt and is not yet open for general sign-in. Access is currently limited to students of the teacher who runs it.</p>
-  <h2>More information</h2>
-  <p><a href="/signin">Sign in</a> · <a href="/privacy">Privacy policy</a></p>
+  <p>The site is being rebuilt. Students can already create an account with a class code; practice questions are being added.</p>
+  <p><a href="/privacy">Privacy policy</a></p>
 </main>
 <footer>vprepcaa is an independent teaching resource. It is not published or endorsed by the VCAA.</footer>
+<script type="module" src="/js/home.js"></script>
 </body>
 </html>
