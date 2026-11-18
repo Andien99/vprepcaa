@@ -61,6 +61,7 @@ v1.get('/join/:code', async (c) => {
  * The browser then starts Google sign-in; Better Auth's hooks read the cookie.
  */
 v1.post('/join/start', async (c) => {
+  if (!c.env.BETTER_AUTH_SECRET) return c.json({ error: 'auth_not_configured' }, 503);
   const body = await c.req.json().catch(() => ({}));
   const code = normaliseCode(body?.code);
   const cls = await findClassByCode(getDb(c.env), code);

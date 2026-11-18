@@ -1,7 +1,11 @@
 import { initHeader } from './header.js';
 import { normaliseCode } from './api/client.js';
 
-initHeader();
+const meReady = initHeader().then((me) => {
+  // Signed in: no "sign in" prompt, and the code is joined from the dashboard.
+  if (me) document.getElementById('have-account')?.remove();
+  return me;
+});
 
 const form = /** @type {HTMLFormElement} */ (document.getElementById('join-form'));
 const input = /** @type {HTMLInputElement} */ (document.getElementById('join-code'));
@@ -15,6 +19,9 @@ form.addEventListener('submit', (e) => {
     input.focus();
     return;
   }
-  // The sign-in page checks the code, shows the class, then continues with Google.
-  location.href = `/signin?code=${encodeURIComponent(code)}`;
+  // Signed out: the sign-in page checks the code, shows the class, then continues with Google.
+  // Signed in: the dashboard joins the class directly.
+  meReady.then((me) => {
+    location.href = me ? `/student/?code=${encodeURIComponent(code)}` : `/signin?code=${encodeURIComponent(code)}`;
+  });
 });

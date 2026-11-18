@@ -58,12 +58,13 @@ export async function lookupClass(/** @type {string} */ code) {
 
 /**
  * Remembers the code for the Google redirect, then starts Google sign-in.
- * @returns {Promise<'invalid_code' | void>}
+ * @returns {Promise<'invalid_code' | 'unavailable' | void>}
  */
 export async function joinWithGoogle(/** @type {string} */ code) {
   const clean = normaliseCode(code);
   const { status } = await postJson('/api/v1/join/start', { code: clean });
-  if (status !== 200) return 'invalid_code';
+  if (status === 404) return 'invalid_code';
+  if (status !== 200) return 'unavailable';
   await signInWithGoogle({ callbackURL: '/student/?joined=1', errorCallbackURL: `/signin?code=${clean}` });
 }
 

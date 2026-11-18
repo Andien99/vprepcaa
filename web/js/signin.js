@@ -75,9 +75,13 @@ joinGoogle.addEventListener('click', async () => {
   if (!checkedCode) return;
   joinGoogle.disabled = true;
   try {
-    if ((await joinWithGoogle(checkedCode)) === 'invalid_code') {
+    const result = await joinWithGoogle(checkedCode);
+    if (result === 'invalid_code') {
       joinMessage.textContent = "That code doesn't match a class any more. Check it with your teacher.";
       found.hidden = true;
+      joinGoogle.disabled = false;
+    } else if (result === 'unavailable') {
+      joinMessage.textContent = 'Sign-in is not available here right now. Please try again later.';
       joinGoogle.disabled = false;
     }
   } catch {

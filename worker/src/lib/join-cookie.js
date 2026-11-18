@@ -7,6 +7,8 @@ export const JOIN_COOKIE = 'vp_join';
 const MAX_AGE_SECONDS = 15 * 60;
 
 async function hmac(/** @type {string} */ secret, /** @type {string} */ value) {
+  // Never sign or verify with a missing secret: that would make the cookie forgeable.
+  if (!secret) throw new Error('BETTER_AUTH_SECRET is not set');
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`join:${value}`));
   return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -39,7 +41,7 @@ export function clearJoinCookie(/** @type {boolean} */ secure) {
  * @param {string} secret @param {string | null | undefined} cookieHeader
  */
 export async function readJoinCode(secret, cookieHeader) {
-  if (!cookieHeader) return null;
+  if (!secret || !cookieHeader) return null;
   const raw = cookieHeader.split(/;\s*/).find((c) => c.startsWith(`${JOIN_COOKIE}=`))?.slice(JOIN_COOKIE.length + 1);
   if (!raw) return null;
   const [code, expires, sig] = raw.split('.');

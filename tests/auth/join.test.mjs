@@ -87,6 +87,8 @@ try {
   const start = await api('POST', '/api/v1/join/start', { body: { code } });
   const joinCookie = start.setCookie?.split(';')[0] ?? '';
   ok('join/start sets a signed, HttpOnly join cookie', start.status === 200 && joinCookie.startsWith('vp_join=') && /HttpOnly/i.test(start.setCookie ?? ''));
+  const noSecret = await app.fetch(new Request('http://localhost/api/v1/join/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }), { ...env, BETTER_AUTH_SECRET: '' });
+  ok('join/start refuses to sign a cookie without a secret (503)', noSecret.status === 503 && !noSecret.headers.get('set-cookie'));
   ok('join/start rejects an unknown code', (await api('POST', '/api/v1/join/start', { body: { code: 'ZZZZZZ' } })).status === 404);
 
   // ---- New student, not on the allowlist, comes back from Google with the cookie --

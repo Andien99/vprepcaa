@@ -17,8 +17,7 @@ footer { text-align:center; padding:1.5rem; font-size:.9rem; color:var(--muted);
 .brand { color:#fff; text-decoration:none; font-weight:700; font-size:1.25rem; letter-spacing:.01em; }
 #account-nav { display:flex; align-items:center; gap:.75rem; }
 .nav-name { color:#d6deea; font-size:.95rem; }
-.btn-header { background:#fff; color:var(--navy); padding:.45rem 1rem; text-decoration:none; }
-.btn-header:hover { background:#e8eef6; }
+.btn-header { padding:.45rem 1rem; }
 
 /* Buttons */
 .btn { display:inline-block; background:var(--teal); color:#fff; border:0; border-radius:.5rem; padding:.7rem 1.2rem; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; text-align:center; }
@@ -49,13 +48,14 @@ label { display:block; font-weight:600; font-size:.9rem; margin:.75rem 0 .3rem; 
 input, select { width:100%; font:inherit; padding:.6rem .75rem; border:1px solid #c5ced9; border-radius:.5rem; background:#fff; color:var(--ink); }
 input:focus, select:focus { outline:2px solid var(--teal); outline-offset:1px; border-color:var(--teal); }
 .code-input { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:1.2rem; letter-spacing:.2em; text-transform:uppercase; }
+.code-input::placeholder { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:1rem; letter-spacing:normal; text-transform:none; }
 .join-card .code-input { margin-bottom:.75rem; }
 .code-row { display:flex; gap:.5rem; }
 .code-row .btn { white-space:nowrap; }
 .form-row { display:grid; grid-template-columns:2fr 1fr; gap:.75rem; }
 .form-row + .btn { margin-top:1rem; }
-.form-message { color:var(--error); min-height:1.4rem; margin:.5rem 0 0; font-size:.95rem; }
-#message:empty { display:none; }
+.form-message { color:var(--error); margin:.5rem 0 0; font-size:.95rem; }
+.form-message:empty { display:none; }
 .class-found { margin-top:1rem; padding:1rem; background:var(--ok-bg); border-radius:.5rem; }
 .class-found p { margin:0 0 .75rem; }
 
