@@ -4,23 +4,59 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>My dashboard | vprepcaa</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
 <header class="site-header">
-  <a class="brand" href="/">vprepcaa</a>
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="19">vprepcaa</a>
   <nav id="account-nav" aria-label="Account"></nav>
 </header>
-<main>
-  <div class="page-head">
-    <h1 id="greeting">My dashboard</h1>
-    <button id="signout" class="btn btn-secondary" type="button">Sign out</button>
-  </div>
-  <p id="who" class="muted">Checking your sign-in…</p>
+<main class="wide">
   <p id="banner" class="banner" role="status" hidden></p>
+  <p id="who" class="muted small" hidden></p>
 
-  <section>
-    <h2>My classes</h2>
+  <!-- Student dashboard (filled by /js/student.js) -->
+  <div id="dash" class="dash" hidden>
+    <div class="dash-top" id="hero"><div class="skel"></div></div>
+    <div class="dash-top tiles" id="tiles"></div>
+    <div class="dash-col">
+      <section class="card" aria-labelledby="h-today">
+        <div class="card-h"><h2 id="h-today">Today's questions</h2><span class="muted" id="today-date"></span></div>
+        <div id="today" class="today"></div>
+      </section>
+      <section class="card" aria-labelledby="h-hw">
+        <div class="card-h"><h2 id="h-hw">Homework from your teachers</h2><span class="muted" id="hw-count"></span></div>
+        <div id="homework" class="hw"></div>
+      </section>
+      <section class="card" aria-labelledby="h-ch">
+        <div class="card-h"><h2 id="h-ch">Chapters</h2><span class="muted small">Done = 80% of its questions answered</span></div>
+        <div id="chapters"></div>
+      </section>
+    </div>
+    <div class="dash-col">
+      <section class="card" aria-labelledby="h-streak">
+        <div class="card-h"><h2 id="h-streak">Daily streak</h2><span class="muted small">Last 5 weeks</span></div>
+        <div id="streak"></div>
+      </section>
+      <section class="card" aria-labelledby="h-prog">
+        <div class="card-h"><h2 id="h-prog">Progress</h2></div>
+        <div id="progress"></div>
+      </section>
+      <section class="card" aria-labelledby="h-recent">
+        <div class="card-h"><h2 id="h-recent">Recent results</h2></div>
+        <div id="recent" class="results"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Classes: teachers manage theirs here; students can join another -->
+  <section id="classes-card" class="card classes-card" hidden>
+    <div class="page-head"><h2 id="classes-h" style="margin:0">My classes</h2><button id="signout" class="btn btn-secondary btn-small" type="button">Sign out</button></div>
     <ul id="classes" class="class-list"></ul>
     <p id="no-classes" class="muted" hidden>You're not in any classes yet.</p>
   </section>
@@ -53,8 +89,6 @@
     <button class="btn" type="submit">Create class</button>
     <p id="create-message" class="form-message" role="alert"></p>
   </form>
-
-  <p class="muted">Practice questions will appear here in a later update.</p>
 </main>
 <script type="module" src="/js/student.js"></script>
 </body>

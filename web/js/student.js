@@ -1,4 +1,8 @@
-import { getMe, signOut, finishJoin, joinClass, listSubjects, createClass, normaliseCode } from './api/client.js';
+// /student/: the student dashboard (Pixel Practice style), plus class management.
+// Students: next activity, today's questions, homework, chapters, streak, progress,
+// recent results, and joining another class. Teachers and admins: their classes and
+// the create-class form.
+import { getMe, getDashboard, signOut, finishJoin, joinClass, listSubjects, createClass, normaliseCode } from './api/client.js';
 import { renderAccountNav } from './header.js';
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
@@ -9,6 +13,299 @@ const ERRORS = /** @type {Record<string, string>} */ ({
   invalid_code: "That code doesn't match a class. Check it with your teacher.",
   not_a_student: 'Class codes are for student accounts. Teachers are added to their own classes when they create them.',
 });
+
+// ---- Small helpers ----------------------------------------------------------------
+
+/** Escapes text for innerHTML. */
+const esc = (/** @type {unknown} */ s) => String(s ?? '').replace(/[&<>"']/g, (c) => /** @type {Record<string, string>} */ ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const TZ = 'Australia/Melbourne';
+const dayKey = (/** @type {number} */ ms) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+const utc = (/** @type {string} */ d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+const dayDiff = (/** @type {string} */ from, /** @type {string} */ to) => Math.round((utc(to) - utc(from)) / 86_400_000);
+const fmtDay = (/** @type {string} */ d, /** @type {Intl.DateTimeFormatOptions} */ opts) => new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', ...opts }).format(new Date(utc(d)));
+const fmtTime = (/** @type {number} */ ms) => new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(ms)).replace(' ', '').toLowerCase();
+
+/** "today", "yesterday", "Mon", "12 Nov" relative to the dashboard's today. */
+function relDay(/** @type {string} */ d, /** @type {string} */ today) {
+  const n = dayDiff(today, d);
+  if (n === 0) return 'today';
+  if (n === -1) return 'yesterday';
+  if (n === 1) return 'tomorrow';
+  if (n > 1 && n < 7) return fmtDay(d, { weekday: 'long' });
+  if (n < 0 && n > -7) return fmtDay(d, { weekday: 'long' });
+  return fmtDay(d, { day: 'numeric', month: 'short' });
+}
+/** Due-date text, e.g. "Due tomorrow 11:59pm", "Due Friday", "2 days overdue". */
+function dueText(/** @type {number | null} */ ms, /** @type {string} */ today, overdue = false) {
+  if (ms == null) return 'No due date';
+  const d = dayKey(ms);
+  const n = dayDiff(today, d);
+  if (overdue) return n === 0 ? `Overdue (was due ${fmtTime(ms)})` : `${-n} day${n === -1 ? '' : 's'} overdue`;
+  if (n <= 1) return `Due ${relDay(d, today)} ${fmtTime(ms)}`;
+  return `Due ${relDay(d, today)}`;
+}
+const short = (/** @type {string} */ name) => name.replace(/ Units 3&4$/, '');
+const scoreClass = (/** @type {number | null} */ p) => (p == null ? '' : p >= 80 ? 'good' : p >= 50 ? 'part' : 'bad');
+
+const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const KIND = /** @type {Record<string, string>} */ ({ fix: 'Fix', retrieval: 'Retrieval', strengthen: 'Strengthen', stretch: 'Stretch', new: 'New' });
+const KIND_HINT = /** @type {Record<string, string>} */ ({
+  fix: 'You lost marks on this last time',
+  retrieval: 'Got it right before: check it has stuck',
+  strengthen: 'From one of your weaker topics',
+  stretch: 'A hard one in a topic you are good at',
+  new: "One you haven't tried yet",
+});
+
+/** Pixel-art flame (8 x 10), drawn in rects so it stays crisp. */
+function flameSVG() {
+  const rows = ['...X....', '...XX...', '..XXX.X.', '.XXOXXX.', '.XOOOXX.', 'XXOYOOXX', 'XOYYYOXX', 'XOYYYYOX', 'XOOYYOOX', '.XXXXXX.'];
+  const fill = /** @type {Record<string, string>} */ ({ X: '#B4372C', O: '#E07A1F', Y: '#F5C842' });
+  let r = '';
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (fill[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${fill[ch]}"/>`; }));
+  return `<svg viewBox="0 0 8 10" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
+}
+
+/** Segmented ring: one arc per item, green when done (as in Pixel Practice). */
+function ringSVG(/** @type {boolean[]} */ done, /** @type {string} */ colour = 'var(--green)') {
+  const n = Math.max(done.length, 1);
+  const gap = n > 1 ? 6 : 0;
+  const R = 40;
+  const arc = (/** @type {number} */ a0, /** @type {number} */ a1) => {
+    const p = (/** @type {number} */ a) => `${50 + R * Math.cos((a * Math.PI) / 180)} ${50 + R * Math.sin((a * Math.PI) / 180)}`;
+    return `M ${p(a0)} A ${R} ${R} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${p(a1)}`;
+  };
+  if (n === 1 && done.length <= 1) return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="${R}" fill="none" stroke="${done[0] ? colour : 'var(--grid)'}" stroke-width="10"/></svg>`;
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const a0 = (360 / n) * i + gap / 2;
+    const a1 = (360 / n) * (i + 1) - gap / 2;
+    s += `<path d="${arc(a0, a1)}" fill="none" stroke="${done[i] ? colour : 'var(--grid)'}" stroke-width="10" stroke-linecap="butt"/>`;
+  }
+  return `<svg viewBox="0 0 100 100">${s}</svg>`;
+}
+/** Continuous ring for a percentage. */
+function pctRing(/** @type {number} */ pct, /** @type {string} */ colour = 'var(--accent)') {
+  const C = 2 * Math.PI * 40;
+  return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="var(--grid)" stroke-width="10"/><circle cx="50" cy="50" r="40" fill="none" stroke="${colour}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(C * Math.min(100, pct)) / 100} ${C}"/></svg>`;
+}
+const bar = (/** @type {number | null} */ pct, colour = '') => `<span class="bar"><i style="width:${Math.max(0, Math.min(100, pct ?? 0))}%${colour ? `;background:${colour}` : ''}"></i></span>`;
+
+// ---- Dashboard sections --------------------------------------------------------------
+
+/** @param {any} d @param {any} me */
+function renderHero(d, me) {
+  const first = (me.name || '').split(/\s+/)[0] || 'there';
+  const hour = Number(new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  const hello = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const n = d.recommended.next;
+  const st = d.streak;
+  const flame = `<div class="flame ${st.current ? '' : 'cold'}" title="Best streak: ${st.best} days">${flameSVG()}<b>${st.current}</b><span>day streak</span></div>`;
+  if (!n) {
+    $('hero').innerHTML = `<div class="dhero"><div class="copy"><span class="hi">${hello}, ${esc(first)}</span><h1>${d.subjects.length ? "You're all set" : 'Join your class to get started'}</h1><p class="detail">${d.subjects.length ? 'Nothing is due right now.' : 'Ask your teacher for the 6-character class code, then enter it below.'}</p></div>${flame}</div>`;
+    return;
+  }
+  const also = d.recommended.also.map((/** @type {any} */ a) => `<a href="${esc(a.href)}">${esc(a.title)}</a>`).join('');
+  $('hero').innerHTML = `
+    <div class="dhero ${n.urgency === 'high' ? 'urgent' : ''}">
+      <div class="copy">
+        <span class="hi">${hello}, ${esc(first)}</span>
+        <span class="eyebrow">${n.urgency === 'high' ? 'Do this first' : 'Recommended next'}</span>
+        <h1>${esc(n.title)}</h1>
+        <p class="detail">${esc(n.detail)}</p>
+        <div class="actions"><a class="btn" href="${esc(n.href)}">${esc(n.cta)}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+        ${also ? `<div class="also"><span class="muted small" style="align-self:center">Or:</span>${also}</div>` : ''}
+      </div>
+      ${flame}
+    </div>`;
+}
+
+/** @param {any} d */
+function renderTiles(d) {
+  const done = d.daily.reduce((/** @type {number} */ n, /** @type {any} */ s) => n + s.done, 0);
+  const total = d.daily.reduce((/** @type {number} */ n, /** @type {any} */ s) => n + s.total, 0);
+  const chDone = d.subjects.reduce((/** @type {number} */ n, /** @type {any} */ s) => n + s.chaptersCompleted, 0);
+  const chAll = d.subjects.reduce((/** @type {number} */ n, /** @type {any} */ s) => n + s.chaptersTotal, 0);
+  const hwOpen = d.homework.filter((/** @type {any} */ h) => h.canStillSubmit).length;
+  $('tiles').innerHTML = `
+    <div class="tile"><b>${done}<small> / ${total}</small></b><span>Daily questions today</span></div>
+    <div class="tile"><b>${d.overall.coveragePct}<small>%</small></b><span>Of all questions tried</span></div>
+    <div class="tile"><b>${chDone}<small> / ${chAll}</small></b><span>Chapters completed</span></div>
+    <div class="tile"><b>${hwOpen}</b><span>Homework to do</span></div>`;
+}
+
+/** @param {any} d */
+function renderToday(d) {
+  $('today-date').textContent = fmtDay(d.today, { weekday: 'long', day: 'numeric', month: 'long' });
+  if (!d.daily.length) {
+    $('today').innerHTML = `<div class="empty">No daily questions yet. They appear once your teacher opens a chapter${d.subjects.length ? '' : ' and you have joined a class'}.</div>`;
+    return;
+  }
+  $('today').innerHTML = d.daily
+    .map((/** @type {any} */ s) => {
+      const left = s.total - s.done;
+      const items = s.items
+        .map(
+          (/** @type {any} */ i) => `<li class="${i.done ? 'done' : ''}"><span class="tick">${i.done ? TICK : ''}</span>
+            <span><span class="ref">${esc(i.ref)}</span><span class="tp">${esc(i.topic ?? '')} · ${i.marks} mark${i.marks === 1 ? '' : 's'}</span></span>
+            <span class="tg ${i.kind}" title="${esc(KIND_HINT[i.kind])}">${KIND[i.kind] ?? i.kind}</span></li>`,
+        )
+        .join('');
+      const cta = left === 0 ? `<span class="tg good">${TICK.replace('<svg', '<svg width="12" height="12"')} Done</span>` : `<a class="btn btn-small" href="/practice/?mode=daily&amp;subject=${esc(s.subjectCode)}">${s.done ? 'Continue' : 'Start'}</a>`;
+      return `<div class="tset">
+        <div class="ring" role="img" aria-label="${s.done} of ${s.total} done">${ringSVG(s.items.map((/** @type {any} */ i) => i.done))}<div class="c"><b>${left}</b><span>left</span></div></div>
+        <div><div class="head"><span class="nm">${esc(short(s.subjectName))}</span>${cta}</div>
+        <div class="muted small">${s.total} questions · about ${s.marks} marks · ${left ? `${s.done} done` : 'all done'}</div></div>
+        <ul class="qlist">${items}</ul></div>`;
+    })
+    .join('');
+}
+
+/** @param {any} d */
+function renderHomework(d) {
+  const hw = d.homework;
+  const open = hw.filter((/** @type {any} */ h) => h.canStillSubmit).length;
+  $('hw-count').textContent = hw.length ? `${open} to do` : '';
+  if (!hw.length) {
+    $('homework').innerHTML = '<div class="empty">No homework set right now.</div>';
+    return;
+  }
+  // To-do first (soonest due), then submitted and marked work.
+  const order = (/** @type {any} */ h) => (h.canStillSubmit ? 0 : 1);
+  const rows = hw.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => order(a) - order(b) || (a.dueAt ?? 9e15) - (b.dueAt ?? 9e15));
+  $('homework').innerHTML = rows
+    .map((/** @type {any} */ h) => {
+      const soon = h.dueAt != null && dayDiff(d.today, dayKey(h.dueAt)) <= 1 && h.state !== 'overdue';
+      const chip =
+        h.state === 'overdue' ? '<span class="tg bad">Overdue</span>'
+        : h.state === 'marked' ? `<span class="tg ${scoreClass(h.scorePct) === 'bad' ? 'bad' : scoreClass(h.scorePct) === 'part' ? 'part' : 'good'}">Marked${h.scorePct != null ? ` · ${h.scorePct}%` : ''}</span>`
+        : h.state === 'submitted' ? `<span class="tg good">Submitted${h.isLate ? ' late' : ''}</span>`
+        : h.state === 'in_progress' ? '<span class="tg retrieval">In progress</span>'
+        : soon ? '<span class="tg warn">Due soon</span>' : '<span class="tg line">Not started</span>';
+      const btn = h.canStillSubmit
+        ? `<a class="btn btn-small ${h.state === 'overdue' ? '' : h.answered ? '' : 'btn-outline'}" href="/practice/?assignment=${encodeURIComponent(h.id)}">${h.answered ? 'Continue' : 'Start'}</a>`
+        : `<a class="btn btn-small btn-secondary" href="/practice/?assignment=${encodeURIComponent(h.id)}&amp;review=1">Review</a>`;
+      const progress = h.canStillSubmit && h.questionCount ? `<div class="bar" title="${h.answered} of ${h.questionCount} answered"><i style="width:${Math.round((100 * h.answered) / h.questionCount)}%"></i></div>` : '';
+      return `<div class="hwrow ${h.state === 'overdue' ? 'overdue' : ''}">
+        <div><div class="t">${esc(h.title)}</div>
+          <div class="m">${chip}<span>${esc(h.className)}</span><span>${h.canStillSubmit || h.state === 'overdue' ? dueText(h.dueAt, d.today, h.state === 'overdue') : h.state === 'marked' && h.score != null ? `${h.score} / ${h.maxScore} marks` : 'Waiting for your teacher to mark it'}</span><span>${h.questionCount} question${h.questionCount === 1 ? '' : 's'}${h.canStillSubmit && h.answered ? ` · ${h.answered} answered` : ''}</span></div></div>
+        ${btn}${progress}${h.state === 'marked' && h.feedback ? `<div class="fb">${esc(h.feedback)}</div>` : ''}</div>`;
+    })
+    .join('');
+}
+
+let chapterSubject = '';
+/** @param {any} d */
+function renderChapters(d) {
+  const subs = d.subjects.filter((/** @type {any} */ s) => s.chapters.length);
+  if (!subs.length) {
+    $('chapters').innerHTML = '<div class="empty">Chapters appear here once questions are added for your subjects.</div>';
+    return;
+  }
+  if (!subs.some((/** @type {any} */ s) => s.code === chapterSubject)) chapterSubject = subs[0].code;
+  const s = subs.find((/** @type {any} */ x) => x.code === chapterSubject);
+  const tabs = subs.length > 1 ? `<div class="tabs2" role="tablist">${subs.map((/** @type {any} */ x) => `<button type="button" role="tab" aria-selected="${x.code === chapterSubject}" data-sub="${esc(x.code)}">${esc(short(x.name))}</button>`).join('')}</div>` : '';
+  const counts = { completed: 0, in_progress: 0, not_started: 0, locked: 0 };
+  for (const c of s.chapters) counts[/** @type {keyof typeof counts} */ (c.status)]++;
+  const remaining = s.chapters.length - counts.completed;
+  const sum = `<div class="chsum"><span class="tg good">${counts.completed} completed</span><span class="tg">${remaining} remaining</span>${counts.in_progress ? `<span class="tg retrieval">${counts.in_progress} in progress</span>` : ''}${counts.locked ? `<span class="tg line">${counts.locked} not open yet</span>` : ''}</div>`;
+  const rows = s.chapters
+    .map((/** @type {any} */ c, /** @type {number} */ i) => {
+      const icon = c.status === 'completed' ? TICK : c.status === 'locked' ? LOCK : String(i + 1);
+      const label = c.status === 'completed' ? 'Completed' : c.status === 'locked' ? 'Not open yet' : c.status === 'in_progress' ? 'In progress' : 'Not started';
+      const topics = c.topics
+        .map((/** @type {any} */ t) => `<div class="topic"><span class="nm">${t.code && !/^T\d+$/.test(t.code) ? `${esc(t.code)} ` : ''}${esc(t.title)}</span>${bar(t.mastery, t.mastery == null ? '' : t.mastery >= 70 ? 'var(--green)' : t.mastery >= 40 ? 'var(--gold)' : 'var(--red)')}<span class="pc">${t.mastery == null ? `${t.attempted}/${t.questions}` : `${t.mastery}%`}</span></div>`)
+        .join('');
+      return `<details class="ch ${c.status}"><summary>
+        <span class="st ${c.status}" aria-hidden="true">${icon}</span>
+        <span class="tx"><span class="t">${esc(c.title)}</span><span class="s"><span>${label}</span>${c.status !== 'locked' ? bar(c.coveragePct) : ''}</span></span>
+        <span class="r">${c.attempted}/${c.questions}<br><span class="faint">${c.scorePct != null ? `${c.scorePct}% marks` : ''}</span></span>
+      </summary>${topics ? `<div class="topics"><div class="muted small">Topic mastery (recent answers count most)</div>${topics}</div>` : ''}</details>`;
+    })
+    .join('');
+  $('chapters').innerHTML = `${tabs}${sum}<div class="chlist">${rows}</div>`;
+  $('chapters').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
+    b.addEventListener('click', () => {
+      chapterSubject = b.dataset.sub ?? '';
+      renderChapters(d);
+    }),
+  );
+}
+
+/** @param {any} d */
+function renderStreak(d) {
+  const st = d.streak;
+  const cal = st.calendar;
+  const pad = (new Date(utc(cal[0].date)).getUTCDay() + 6) % 7; // Monday first
+  const cells = [
+    ...['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="dow">${x}</span>`),
+    ...Array.from({ length: pad }, () => '<span class="d pad"></span>'),
+    ...cal.map((/** @type {any} */ c) => {
+      const tip = c.total ? `${c.done} of ${c.total} daily questions` : c.level === 'none' ? 'No practice' : 'Practised';
+      return `<span class="d ${c.level} ${c.date === d.today ? 'today' : ''}" title="${esc(fmtDay(c.date, { weekday: 'short', day: 'numeric', month: 'short' }))}: ${tip}">${Number(c.date.slice(8))}</span>`;
+    }),
+  ];
+  const note = st.today ? 'Today counts. Nice.' : st.current ? 'Answer a daily question today to keep it going.' : 'Answer a daily question to start a streak.';
+  $('streak').innerHTML = `
+    <div class="streak-line"><div><b>${st.current}</b><span>Current streak</span></div><div><b>${st.best}</b><span>Best streak</span></div></div>
+    <div class="cal">${cells.join('')}</div>
+    <div class="legend"><span><i style="background:var(--green)"></i>All done</span><span><i style="background:#f2d65a"></i>Most</span><span><i style="background:#fbf3c8"></i>Some</span><span><i style="background:var(--grid)"></i>None</span></div>
+    <p class="muted small" style="margin:.6rem 0 0">${note}</p>`;
+}
+
+/** @param {any} d */
+function renderProgress(d) {
+  if (!d.subjects.length) {
+    $('progress').innerHTML = '<div class="empty">Join a class to see your progress.</div>';
+    return;
+  }
+  const o = d.overall;
+  const rows = d.subjects
+    .map(
+      (/** @type {any} */ s) => `<div class="subj ${esc(s.code)}">
+      <span class="ico ${esc(s.code)}">${esc(s.code.replace(/34$/, ''))}</span>
+      <div><div class="l1"><span>${esc(short(s.name))}</span><span>${s.coveragePct}%</span></div>
+      ${bar(s.coveragePct)}
+      <div class="l3">${s.attempted} of ${s.questions} questions · ${s.scorePct != null ? `${s.scorePct}% of marks` : 'no marks yet'} · ${s.chaptersCompleted}/${s.chaptersTotal} chapters${s.fixDue ? ` · <span style="color:var(--red)">${s.fixDue} to fix</span>` : ''}</div></div></div>`,
+    )
+    .join('');
+  $('progress').innerHTML = `
+    <div class="overall"><div class="ring">${pctRing(o.coveragePct)}<div class="c"><b>${o.coveragePct}%</b></div></div>
+      <div><div style="font-weight:700">All subjects</div><div class="muted small">${o.attempted} of ${o.questions} questions tried</div></div></div>
+    <div class="subjects">${rows}</div>`;
+}
+
+/** @param {any} d */
+function renderRecent(d) {
+  if (!d.recent.length) {
+    $('recent').innerHTML = '<div class="empty">Your results will show here after you answer some questions.</div>';
+    return;
+  }
+  $('recent').innerHTML = d.recent
+    .map(
+      (/** @type {any} */ r) => `<div class="res">
+      <div><div class="t">${esc(r.title)}${r.subjectCode ? `<span class="tg line">${esc(r.subjectCode)}</span>` : ''}${r.markedByTeacher ? '<span class="tg dark">Teacher marked</span>' : ''}</div>
+        <div class="m">${esc(relDay(r.date, d.today).replace(/^./, (c) => c.toUpperCase()))} · ${r.questions} question${r.questions === 1 ? '' : 's'}${r.refs?.length ? ` · ${esc(r.refs.slice(0, 2).join(', '))}${r.questions > 2 ? '…' : ''}` : ''}</div></div>
+      <div class="score ${scoreClass(r.pct)}">${r.pct ?? '–'}%<small>${r.marks}/${r.outOf}</small></div>
+      ${r.feedback ? `<div class="fb">“${esc(r.feedback)}”</div>` : ''}</div>`,
+    )
+    .join('');
+}
+
+/** @param {any} d @param {any} me */
+function renderDashboard(d, me) {
+  renderHero(d, me);
+  renderTiles(d);
+  renderToday(d);
+  renderHomework(d);
+  renderChapters(d);
+  renderStreak(d);
+  renderProgress(d);
+  renderRecent(d);
+}
+
+// ---- Classes (kept from the earlier page) ----------------------------------------------
 
 function showBanner(/** @type {string} */ text, ok = true) {
   banner.textContent = text;
@@ -57,22 +354,36 @@ function renderClasses(classes) {
   }
 }
 
+/** @type {any} */
+let me = null;
+
 async function refresh() {
-  const me = await getMe();
+  me = await getMe();
   if (!me) {
     location.replace('/signin');
     return null;
   }
   renderAccountNav(me);
-  $('greeting').textContent = `Hi, ${(me.name || '').split(/\s+/)[0] || 'there'}`;
-  $('who').textContent = `Signed in as ${me.email} · ${me.role}`;
   renderClasses(me.classes);
+  $('classes-card').hidden = false;
+  if (me.role === 'student') {
+    $('dash').hidden = false;
+    try {
+      const d = await getDashboard();
+      if (d) renderDashboard(d, me);
+    } catch {
+      $('hero').innerHTML = '<div class="banner banner-error">Your dashboard could not load. Refresh to try again.</div>';
+    }
+  } else {
+    $('who').hidden = false;
+    $('who').textContent = `Signed in as ${me.email} · ${me.role}`;
+  }
   return me;
 }
 
 async function main() {
-  const me = await refresh();
-  if (!me) return;
+  const signedIn = await refresh();
+  if (!signedIn) return;
   const params = new URLSearchParams(location.search);
 
   // Back from Google after joining with a code: confirm the class (also clears the code cookie).
@@ -95,8 +406,8 @@ async function main() {
   }
   if (params.size) history.replaceState(null, '', '/student/');
 
-  if (me.role === 'student') setupJoin();
-  if (me.role === 'teacher' || me.role === 'admin') setupCreate();
+  if (signedIn.role === 'student') setupJoin();
+  if (signedIn.role === 'teacher' || signedIn.role === 'admin') setupCreate();
 }
 
 function setupJoin() {
