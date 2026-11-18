@@ -45,6 +45,8 @@ function dueText(/** @type {number | null} */ ms, /** @type {string} */ today, o
   return `Due ${relDay(d, today)}`;
 }
 const short = (/** @type {string} */ name) => name.replace(/ Units 3&4$/, '');
+/** Tab label: General, Methods, Chemistry. */
+const tabName = (/** @type {string} */ name) => short(name).replace(/^General Mathematics$/, 'General').replace(/^Mathematical Methods$/, 'Methods');
 const scoreClass = (/** @type {number | null} */ p) => (p == null ? '' : p >= 80 ? 'good' : p >= 50 ? 'part' : 'bad');
 
 const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -103,19 +105,18 @@ function renderHero(d, me) {
   const st = d.streak;
   const flame = `<div class="flame ${st.current ? '' : 'cold'}" title="Best streak: ${st.best} days">${flameSVG()}<b>${st.current}</b><span>day streak</span></div>`;
   if (!n) {
-    $('hero').innerHTML = `<div class="dhero"><div class="copy"><span class="hi">${hello}, ${esc(first)}</span><h1>${d.subjects.length ? "You're all set" : 'Join your class to get started'}</h1><p class="detail">${d.subjects.length ? 'Nothing is due right now.' : 'Ask your teacher for the 6-character class code, then enter it below.'}</p></div>${flame}</div>`;
+    $('hero').innerHTML = `<div class="dhero"><div class="copy"><span class="hi">${hello}, ${esc(first)}</span><h1>${d.subjects.length ? "You're all set" : 'Join your class to get started'}</h1><p class="detail">${d.subjects.length ? 'Nothing is due right now.' : 'Ask your teacher for the 6-character class code.'}</p>${d.subjects.length ? '' : '<div class="actions"><button type="button" class="btn" id="hero-join">Join a class</button></div>'}</div>${flame}</div>`;
+    document.getElementById('hero-join')?.addEventListener('click', () => /** @type {HTMLDialogElement} */ ($('classes-dialog')).showModal());
     return;
   }
-  const also = d.recommended.also.map((/** @type {any} */ a) => `<a href="${esc(a.href)}">${esc(a.title)}</a>`).join('');
+  const also = d.recommended.also.map((/** @type {any} */ a) => `<a href="${esc(a.href)}" title="${esc(a.detail)}">${esc(a.title)}</a>`).join('');
   $('hero').innerHTML = `
     <div class="dhero ${n.urgency === 'high' ? 'urgent' : ''}">
       <div class="copy">
-        <span class="hi">${hello}, ${esc(first)}</span>
-        <span class="eyebrow">${n.urgency === 'high' ? 'Do this first' : 'Recommended next'}</span>
+        <span class="hi">${hello}, ${esc(first)} <span class="eyebrow">· ${n.urgency === 'high' ? 'Do this first' : 'Recommended next'}</span></span>
         <h1>${esc(n.title)}</h1>
         <p class="detail">${esc(n.detail)}</p>
-        <div class="actions"><a class="btn" href="${esc(n.href)}">${esc(n.cta)}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-        ${also ? `<div class="also"><span class="muted small" style="align-self:center">Or:</span>${also}</div>` : ''}
+        <div class="actions"><a class="btn" href="${esc(n.href)}">${esc(n.cta)}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>${also ? `<span class="muted small">or</span><span class="also">${also}</span>` : ''}</div>
       </div>
       ${flame}
     </div>`;
@@ -135,31 +136,47 @@ function renderTiles(d) {
     <div class="tile"><b>${hwOpen}</b><span>Homework to do</span></div>`;
 }
 
+let todaySubject = '';
 /** @param {any} d */
 function renderToday(d) {
   $('today-date').textContent = fmtDay(d.today, { weekday: 'long', day: 'numeric', month: 'long' });
   if (!d.daily.length) {
+    $('today-tabs').innerHTML = '';
     $('today').innerHTML = `<div class="empty">No daily questions yet. They appear once your teacher opens a chapter${d.subjects.length ? '' : ' and you have joined a class'}.</div>`;
     return;
   }
-  $('today').innerHTML = d.daily
-    .map((/** @type {any} */ s) => {
-      const left = s.total - s.done;
-      const items = s.items
-        .map(
-          (/** @type {any} */ i) => `<li class="${i.done ? 'done' : ''}"><span class="tick">${i.done ? TICK : ''}</span>
-            <span><span class="ref">${esc(i.ref)}</span><span class="tp">${esc(i.topic ?? '')} · ${i.marks} mark${i.marks === 1 ? '' : 's'}</span></span>
-            <span class="tg ${i.kind}" title="${esc(KIND_HINT[i.kind])}">${KIND[i.kind] ?? i.kind}</span></li>`,
-        )
-        .join('');
-      const cta = left === 0 ? `<span class="tg good">${TICK.replace('<svg', '<svg width="12" height="12"')} Done</span>` : `<a class="btn btn-small" href="/practice/?mode=daily&amp;subject=${esc(s.subjectCode)}">${s.done ? 'Continue' : 'Start'}</a>`;
-      return `<div class="tset">
-        <div class="ring" role="img" aria-label="${s.done} of ${s.total} done">${ringSVG(s.items.map((/** @type {any} */ i) => i.done))}<div class="c"><b>${left}</b><span>left</span></div></div>
-        <div><div class="head"><span class="nm">${esc(short(s.subjectName))}</span>${cta}</div>
-        <div class="muted small">${s.total} questions · about ${s.marks} marks · ${left ? `${s.done} done` : 'all done'}</div></div>
-        <ul class="qlist">${items}</ul></div>`;
-    })
+  // Open on the first subject with questions left (or keep the one the student picked).
+  if (!d.daily.some((/** @type {any} */ s) => s.subjectCode === todaySubject))
+    todaySubject = (d.daily.find((/** @type {any} */ s) => s.done < s.total) ?? d.daily[0]).subjectCode;
+  $('today-tabs').innerHTML =
+    d.daily.length > 1
+      ? `<div class="tabs2" role="tablist" aria-label="Subject">${d.daily
+          .map((/** @type {any} */ s) => `<button type="button" role="tab" aria-selected="${s.subjectCode === todaySubject}" data-sub="${esc(s.subjectCode)}">${esc(tabName(s.subjectName))}<span class="n ${s.done >= s.total ? 'ok' : ''}">${s.done}/${s.total}</span></button>`)
+          .join('')}</div>`
+      : '';
+  $('today-tabs').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
+    b.addEventListener('click', () => {
+      todaySubject = b.dataset.sub ?? '';
+      renderToday(d);
+    }),
+  );
+  const s = d.daily.find((/** @type {any} */ x) => x.subjectCode === todaySubject);
+  const left = s.total - s.done;
+  const items = s.items
+    .map(
+      (/** @type {any} */ i) => `<li class="${i.done ? 'done' : ''}"><span class="tick">${i.done ? TICK : ''}</span>
+        <span><span class="ref">${esc(i.ref)}</span><span class="tp">${esc(i.topic ?? '')} · ${i.marks} mark${i.marks === 1 ? '' : 's'}</span></span>
+        <span class="tg ${i.kind}" title="${esc(KIND_HINT[i.kind])}">${KIND[i.kind] ?? i.kind}</span></li>`,
+    )
     .join('');
+  const cta = left === 0 ? `<span class="tg good">Done</span>` : `<a class="btn" href="/practice/?mode=daily&amp;subject=${esc(s.subjectCode)}">${s.done ? 'Continue' : 'Start'}</a>`;
+  const kinds = [...new Set(s.items.map((/** @type {any} */ i) => i.kind))].map((k) => `<span><span class="tg ${k}">${KIND[k]}</span> ${esc(KIND_HINT[k])}</span>`).join('');
+  $('today').innerHTML = `<div class="tset">
+      <div class="ring" role="img" aria-label="${s.done} of ${s.total} done">${ringSVG(s.items.map((/** @type {any} */ i) => i.done))}<div class="c"><b>${left}</b><span>left</span></div></div>
+      <div><div class="nm">${esc(short(s.subjectName))}</div><div class="muted small">${s.total} questions · about ${s.marks} marks · ${left ? `${s.done} done` : 'all done'}</div></div>
+      ${cta}</div>
+    <ul class="qlist">${items}</ul>
+    <div class="kinds">${kinds}</div>`;
 }
 
 /** @param {any} d */
@@ -196,20 +213,38 @@ function renderHomework(d) {
 }
 
 let chapterSubject = '';
-/** @param {any} d */
-function renderChapters(d) {
-  const subs = d.subjects.filter((/** @type {any} */ s) => s.chapters.length);
-  if (!subs.length) {
-    $('chapters').innerHTML = '<div class="empty">Chapters appear here once questions are added for your subjects.</div>';
+/** Progress per subject and its chapters, one subject at a time. @param {any} d */
+function renderProgress(d) {
+  const o = d.overall;
+  $('prog-overall').textContent = d.subjects.length ? `${o.attempted} of ${o.questions} questions tried (${o.coveragePct}%)` : '';
+  if (!d.subjects.length) {
+    $('prog-head').innerHTML = '';
+    $('chapters').innerHTML = '<div class="empty">Join a class to see your progress.</div>';
     return;
   }
-  if (!subs.some((/** @type {any} */ s) => s.code === chapterSubject)) chapterSubject = subs[0].code;
-  const s = subs.find((/** @type {any} */ x) => x.code === chapterSubject);
-  const tabs = subs.length > 1 ? `<div class="tabs2" role="tablist">${subs.map((/** @type {any} */ x) => `<button type="button" role="tab" aria-selected="${x.code === chapterSubject}" data-sub="${esc(x.code)}">${esc(short(x.name))}</button>`).join('')}</div>` : '';
+  if (!d.subjects.some((/** @type {any} */ s) => s.code === chapterSubject)) chapterSubject = d.subjects[0].code;
+  const s = d.subjects.find((/** @type {any} */ x) => x.code === chapterSubject);
+  const tabs =
+    d.subjects.length > 1
+      ? `<div class="tabs2" role="tablist" aria-label="Subject">${d.subjects
+          .map((/** @type {any} */ x) => `<button type="button" role="tab" aria-selected="${x.code === chapterSubject}" data-sub="${esc(x.code)}">${esc(tabName(x.name))}<span class="n">${x.coveragePct}%</span></button>`)
+          .join('')}</div>`
+      : '';
   const counts = { completed: 0, in_progress: 0, not_started: 0, locked: 0 };
   for (const c of s.chapters) counts[/** @type {keyof typeof counts} */ (c.status)]++;
   const remaining = s.chapters.length - counts.completed;
-  const sum = `<div class="chsum"><span class="tg good">${counts.completed} completed</span><span class="tg">${remaining} remaining</span>${counts.in_progress ? `<span class="tg retrieval">${counts.in_progress} in progress</span>` : ''}${counts.locked ? `<span class="tg line">${counts.locked} not open yet</span>` : ''}</div>`;
+  $('prog-head').innerHTML = tabs;
+  const psum = `<div class="psum ${esc(s.code)}">
+      <span class="ico ${esc(s.code)}">${esc(s.code.replace(/34$/, ''))}</span>
+      <div><div class="l1"><span>${s.attempted} of ${s.questions} questions</span><span>${s.scorePct != null ? `${s.scorePct}% of marks` : 'no marks yet'}</span></div>${bar(s.coveragePct)}</div>
+      <div class="l3"><span class="tg good">${counts.completed} chapter${counts.completed === 1 ? '' : 's'} completed</span><span class="tg">${remaining} remaining</span>${counts.in_progress ? `<span class="tg retrieval">${counts.in_progress} in progress</span>` : ''}${counts.locked ? `<span class="tg line">${counts.locked} not open yet</span>` : ''}${s.fixDue ? `<span class="tg fix">${s.fixDue} to fix</span>` : ''}</div>
+    </div>`;
+  $('prog-head').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
+    b.addEventListener('click', () => {
+      chapterSubject = b.dataset.sub ?? '';
+      renderProgress(d);
+    }),
+  );
   const rows = s.chapters
     .map((/** @type {any} */ c, /** @type {number} */ i) => {
       const icon = c.status === 'completed' ? TICK : c.status === 'locked' ? LOCK : String(i + 1);
@@ -219,18 +254,12 @@ function renderChapters(d) {
         .join('');
       return `<details class="ch ${c.status}"><summary>
         <span class="st ${c.status}" aria-hidden="true">${icon}</span>
-        <span class="tx"><span class="t">${esc(c.title)}</span><span class="s"><span>${label}</span>${c.status !== 'locked' ? bar(c.coveragePct) : ''}</span></span>
+        <span class="tx"><span class="t" title="${esc(c.title)}">${esc(c.title)}</span><span class="s"><span>${label}</span>${c.status !== 'locked' ? bar(c.coveragePct) : ''}</span></span>
         <span class="r">${c.attempted}/${c.questions}<br><span class="faint">${c.scorePct != null ? `${c.scorePct}% marks` : ''}</span></span>
       </summary>${topics ? `<div class="topics"><div class="muted small">Topic mastery (recent answers count most)</div>${topics}</div>` : ''}</details>`;
     })
     .join('');
-  $('chapters').innerHTML = `${tabs}${sum}<div class="chlist">${rows}</div>`;
-  $('chapters').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
-    b.addEventListener('click', () => {
-      chapterSubject = b.dataset.sub ?? '';
-      renderChapters(d);
-    }),
-  );
+  $('chapters').innerHTML = psum + (rows ? `<div class="chlist">${rows}</div>` : '<div class="empty">Chapters appear here once questions are added for this subject.</div>');
 }
 
 /** @param {any} d */
@@ -248,32 +277,9 @@ function renderStreak(d) {
   ];
   const note = st.today ? 'Today counts. Nice.' : st.current ? 'Answer a daily question today to keep it going.' : 'Answer a daily question to start a streak.';
   $('streak').innerHTML = `
-    <div class="streak-line"><div><b>${st.current}</b><span>Current streak</span></div><div><b>${st.best}</b><span>Best streak</span></div></div>
+    <div class="streak-line"><div><b>${st.current}</b><span>Current streak</span></div><div><b>${st.best}</b><span>Best streak</span></div><p>${note}</p></div>
     <div class="cal">${cells.join('')}</div>
-    <div class="legend"><span><i style="background:var(--green)"></i>All done</span><span><i style="background:#f2d65a"></i>Most</span><span><i style="background:#fbf3c8"></i>Some</span><span><i style="background:var(--grid)"></i>None</span></div>
-    <p class="muted small" style="margin:.6rem 0 0">${note}</p>`;
-}
-
-/** @param {any} d */
-function renderProgress(d) {
-  if (!d.subjects.length) {
-    $('progress').innerHTML = '<div class="empty">Join a class to see your progress.</div>';
-    return;
-  }
-  const o = d.overall;
-  const rows = d.subjects
-    .map(
-      (/** @type {any} */ s) => `<div class="subj ${esc(s.code)}">
-      <span class="ico ${esc(s.code)}">${esc(s.code.replace(/34$/, ''))}</span>
-      <div><div class="l1"><span>${esc(short(s.name))}</span><span>${s.coveragePct}%</span></div>
-      ${bar(s.coveragePct)}
-      <div class="l3">${s.attempted} of ${s.questions} questions · ${s.scorePct != null ? `${s.scorePct}% of marks` : 'no marks yet'} · ${s.chaptersCompleted}/${s.chaptersTotal} chapters${s.fixDue ? ` · <span style="color:var(--red)">${s.fixDue} to fix</span>` : ''}</div></div></div>`,
-    )
-    .join('');
-  $('progress').innerHTML = `
-    <div class="overall"><div class="ring">${pctRing(o.coveragePct)}<div class="c"><b>${o.coveragePct}%</b></div></div>
-      <div><div style="font-weight:700">All subjects</div><div class="muted small">${o.attempted} of ${o.questions} questions tried</div></div></div>
-    <div class="subjects">${rows}</div>`;
+    <div class="legend"><span><i style="background:var(--green)"></i>All done</span><span><i style="background:#f2d65a"></i>Most</span><span><i style="background:#fbf3c8"></i>Some</span><span><i style="background:var(--grid)"></i>None</span></div>`;
 }
 
 /** @param {any} d */
@@ -293,16 +299,30 @@ function renderRecent(d) {
     .join('');
 }
 
+/** Marks scrolling panels that have more below, so their bottom edge fades. */
+function watchScroll() {
+  document.querySelectorAll('.panel .body').forEach((/** @type {any} */ el) => {
+    const update = () => el.classList.toggle('more', el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    if (!el.dataset.watched) {
+      el.dataset.watched = '1';
+      el.addEventListener('scroll', update, { passive: true });
+      new ResizeObserver(update).observe(el);
+      new MutationObserver(update).observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+    }
+    update();
+  });
+}
+
 /** @param {any} d @param {any} me */
 function renderDashboard(d, me) {
   renderHero(d, me);
   renderTiles(d);
   renderToday(d);
   renderHomework(d);
-  renderChapters(d);
   renderStreak(d);
   renderProgress(d);
   renderRecent(d);
+  watchScroll();
 }
 
 // ---- Classes (kept from the earlier page) ----------------------------------------------
@@ -311,7 +331,11 @@ function showBanner(/** @type {string} */ text, ok = true) {
   banner.textContent = text;
   banner.classList.toggle('banner-error', !ok);
   banner.hidden = false;
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => (banner.hidden = true), ok ? 6000 : 10000);
 }
+/** @type {any} */
+let bannerTimer;
 
 /** @param {import('./api/client.js').MyClass[]} classes */
 function renderClasses(classes) {
@@ -354,6 +378,22 @@ function renderClasses(classes) {
   }
 }
 
+/** Students: a "My classes" button in the header opens classes and joining in a dialog. */
+function addClassesButton() {
+  const nav = document.getElementById('account-nav');
+  if (!nav || nav.querySelector('.btn-classes')) return;
+  const dlg = /** @type {HTMLDialogElement} */ ($('classes-dialog'));
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-secondary btn-small btn-classes';
+  btn.textContent = 'My classes';
+  btn.addEventListener('click', () => dlg.showModal());
+  nav.prepend(btn);
+  $('classes-close').hidden = false;
+  $('classes-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+}
+
 /** @type {any} */
 let me = null;
 
@@ -368,6 +408,8 @@ async function refresh() {
   $('classes-card').hidden = false;
   if (me.role === 'student') {
     $('dash').hidden = false;
+    document.body.classList.add('app');
+    addClassesButton();
     try {
       const d = await getDashboard();
       if (d) renderDashboard(d, me);
@@ -375,6 +417,9 @@ async function refresh() {
       $('hero').innerHTML = '<div class="banner banner-error">Your dashboard could not load. Refresh to try again.</div>';
     }
   } else {
+    // Teachers: classes and the create form sit on the page itself.
+    const dlg = /** @type {HTMLDialogElement} */ ($('classes-dialog'));
+    if (dlg.isConnected && $('classes-wrap').parentElement === dlg) $('teacher-area').append($('classes-wrap'));
     $('who').hidden = false;
     $('who').textContent = `Signed in as ${me.email} · ${me.role}`;
   }
