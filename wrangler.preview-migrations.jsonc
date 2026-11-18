@@ -1,0 +1,15 @@
+// Only for applying migrations to the Preview database (Cloudflare's recommended setup).
+// Must point at the same database as previews.d1_databases in wrangler.jsonc.
+//   npm run db:migrate:preview
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vprepcaa",
+  "d1_databases": [
+    {
+      "binding": "PREVIEW_DB",
+      "database_name": "vprepcaa-db-preview",
+      "database_id": "275011ae-b4a1-425b-88d3-0ef6ba454aa1",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

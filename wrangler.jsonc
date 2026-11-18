@@ -28,5 +28,27 @@
   "vars": {
     "BETTER_AUTH_URL": "https://vprepcaa.com",
     "GOOGLE_CLIENT_ID": "664348467235-fu2jq5sqeknt1q427r5ass1f4tba5mqc.apps.googleusercontent.com"
+  },
+  // Branch Previews (Workers Builds runs `npx wrangler preview` for non-main branches).
+  // They never touch production data: separate D1 database and R2 bucket. Apply migrations
+  // to the preview database with `npm run db:migrate:preview` before a branch needs them.
+  // No BETTER_AUTH_URL: Better Auth takes the host from the request, limited to
+  // AUTH_ALLOWED_HOSTS. Sign-in stays off until a preview BETTER_AUTH_SECRET is set.
+  "previews": {
+    "vars": {
+      "AUTH_ALLOWED_HOSTS": "*.workers.dev",
+      "GOOGLE_CLIENT_ID": "664348467235-fu2jq5sqeknt1q427r5ass1f4tba5mqc.apps.googleusercontent.com"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "vprepcaa-db-preview",
+        "database_id": "275011ae-b4a1-425b-88d3-0ef6ba454aa1",
+        "migrations_dir": "migrations"
+      }
+    ],
+    "r2_buckets": [
+      { "binding": "CONTENT", "bucket_name": "vprepcaa-content-preview" }
+    ]
   }
 }

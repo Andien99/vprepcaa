@@ -8,6 +8,41 @@
       "when": 1794981795714,
       "tag": "0000_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794996000000,
+      "tag": "0001_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794996001000,
+      "tag": "0002_schools_and_curriculum",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794996002000,
+      "tag": "0003_classes_and_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794996003000,
+      "tag": "0004_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794996004000,
+      "tag": "0005_progress",
+      "breakpoints": true
     }
   ]
 }
