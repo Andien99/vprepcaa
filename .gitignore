@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+*.pem
+*.key
+dist/
+# Exam content, answer keys and solutions never go in git (public repo).
+/content/
+*.sqlite

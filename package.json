@@ -1,0 +1,19 @@
+{
+  "name": "vprepcaa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "vprepcaa: VCAA exam practice platform (successor to vcaa-pixel-practice).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit -p jsconfig.json"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}
