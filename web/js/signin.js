@@ -23,9 +23,7 @@ initHeader().then((me) => {
 // Errors come back from Better Auth as ?error=...
 const error = new URLSearchParams(location.search).get('error')?.toLowerCase() ?? '';
 if (error) {
-  message.textContent = error.includes('not_invited')
-    ? "We couldn't find an account for that Google account. If you're new, enter your class code below to join."
-    : error.includes('suspended')
+  message.textContent = error.includes('suspended')
       ? 'This account has been suspended. Please talk to your teacher.'
       : 'Sign-in did not complete. Please try again.';
 }

@@ -54,14 +54,6 @@ async function api(/** @type {string} */ method, /** @type {string} */ path, { b
 /** Runs Better Auth's internal adapter as if inside the OAuth callback request. */
 const inCallback = (/** @type {string | null} */ cookie, /** @type {() => Promise<any>} */ fn) =>
   runWithEndpointContext(/** @type {any} */ ({ context: ctx, headers: new Headers(cookie ? { cookie } : {}) }), fn);
-const errorOf = async (/** @type {() => Promise<any>} */ fn) => {
-  try {
-    await fn();
-    return null;
-  } catch (e) {
-    return String(/** @type {any} */ (e)?.body?.message ?? /** @type {any} */ (e)?.message ?? e);
-  }
-};
 
 try {
   // ---- A teacher (allowlisted) signs in and creates a class --------------------
@@ -92,11 +84,14 @@ try {
   ok('join/start rejects an unknown code', (await api('POST', '/api/v1/join/start', { body: { code: 'ZZZZZZ' } })).status === 404);
 
   // ---- New student, not on the allowlist, comes back from Google with the cookie --
-  const stranger = await errorOf(() => inCallback(null, () => ia.createOAuthUser({ email: 'nocode@example.test', name: 'No Code', emailVerified: true }, { providerId: 'google', accountId: 'g-nocode' })));
-  ok('without a code an uninvited Google account is refused', /not_invited/.test(stranger ?? ''), stranger ?? '');
+  const memberships = async (/** @type {string} */ id) => (await db.prepare(`SELECT count(*) AS n FROM class_members WHERE user_id = ?`).bind(id).first())?.n;
+  const stranger = await inCallback(null, () => ia.createOAuthUser({ email: 'nocode@example.test', name: 'No Code', emailVerified: true }, { providerId: 'google', accountId: 'g-nocode' }));
+  await inCallback(null, () => ia.createSession(stranger.user.id));
+  ok('without a code a new Google account is created, in no class', !!stranger?.user?.id && (await memberships(stranger.user.id)) === 0);
   const tampered = joinCookie.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
-  const forged = await errorOf(() => inCallback(tampered, () => ia.createOAuthUser({ email: 'forger@example.test', name: 'Forger', emailVerified: true }, { providerId: 'google', accountId: 'g-forger' })));
-  ok('a tampered join cookie is refused', /not_invited/.test(forged ?? ''), forged ?? '');
+  const forger = await inCallback(tampered, () => ia.createOAuthUser({ email: 'forger@example.test', name: 'Forger', emailVerified: true }, { providerId: 'google', accountId: 'g-forger' }));
+  await inCallback(tampered, () => ia.createSession(forger.user.id));
+  ok('a tampered join cookie joins no class', (await memberships(forger.user.id)) === 0);
 
   const student = await inCallback(joinCookie, () => ia.createOAuthUser({ email: 'New.Student@example.test', name: 'New Student', emailVerified: true }, { providerId: 'google', accountId: 'g-student' }));
   ok('with a valid code a new account is created', !!student?.user?.id);
@@ -132,8 +127,9 @@ try {
   // ---- Archived classes stop accepting the code ------------------------------------
   await db.prepare(`UPDATE classes SET is_archived = 1 WHERE join_code = ?`).bind(code).run();
   ok('archived class code no longer works', (await api('GET', `/api/v1/join/${code}`)).status === 404);
-  const late = await errorOf(() => inCallback(joinCookie, () => ia.createOAuthUser({ email: 'late@example.test', name: 'Late', emailVerified: true }, { providerId: 'google', accountId: 'g-late' })));
-  ok('a pending cookie for an archived class no longer admits sign-ups', /not_invited/.test(late ?? ''), late ?? '');
+  const late = await inCallback(joinCookie, () => ia.createOAuthUser({ email: 'late@example.test', name: 'Late', emailVerified: true }, { providerId: 'google', accountId: 'g-late' }));
+  await inCallback(joinCookie, () => ia.createSession(late.user.id));
+  ok('a pending cookie for an archived class joins nothing', (await memberships(late.user.id)) === 0);
 } finally {
   await proxy.dispose();
   rmSync(persist, { recursive: true, force: true });

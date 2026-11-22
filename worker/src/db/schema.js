@@ -45,6 +45,11 @@ export const user = sqliteTable(
     platformRole: text('platform_role').notNull().default('student'),
     yearLevel: integer('year_level'),
     status: text('status').notNull().default('active'), // 'active' | 'suspended'
+    // Profile, filled in on /welcome after the first sign-in (migration 0009).
+    firstName: text('first_name'),
+    lastName: text('last_name'),
+    schoolName: text('school_name'),
+    onboardedAt: ms('onboarded_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -315,6 +320,37 @@ export const classMembers = sqliteTable(
     index('ix_class_members_user').on(t.userId, t.role),
     index('ix_class_members_roster').on(t.classId, t.role),
     check('ck_class_members_role', sql`${t.role} IN ('teacher', 'student')`),
+  ],
+);
+
+// The subjects a user studies (students) or teaches (teachers), from their profile.
+export const userSubjects = sqliteTable(
+  'user_subjects',
+  {
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.subjectId] })],
+);
+
+// Emails a teacher has added to a class. A student signing in with one of these
+// emails is put into the class automatically (no code needed).
+export const classInvites = sqliteTable(
+  'class_invites',
+  {
+    id: text('id').primaryKey(),
+    classId: text('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    invitedBy: text('invited_by').references(() => user.id, { onDelete: 'set null' }),
+    acceptedBy: text('accepted_by').references(() => user.id, { onDelete: 'set null' }),
+    acceptedAt: ms('accepted_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('ux_class_invites').on(t.classId, t.email),
+    index('ix_class_invites_email').on(t.email),
+    check('ck_class_invites_email', sql`${t.email} = lower(${t.email}) AND ${t.email} LIKE '%_@_%'`),
   ],
 );
 
