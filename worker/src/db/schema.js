@@ -576,3 +576,26 @@ export const userAchievements = sqliteTable(
     check('ck_user_achievements_context', sql`${t.contextJson} IS NULL OR json_valid(${t.contextJson})`),
   ],
 );
+
+// ===========================================================================
+// DAILY SETS
+// ===========================================================================
+
+export const dailySets = sqliteTable(
+  'daily_sets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    setDate: text('set_date').notNull(), // 'YYYY-MM-DD', Australia/Melbourne
+    itemsJson: text('items_json', { mode: 'json' }).notNull(), // [{ q, k }]
+    algorithm: text('algorithm').notNull().default('pp-v1'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('ux_daily_sets').on(t.userId, t.subjectId, t.setDate),
+    index('ix_daily_sets_user_date').on(t.userId, t.setDate),
+    check('ck_daily_sets_date', sql`${t.setDate} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`),
+    check('ck_daily_sets_items', sql`json_valid(${t.itemsJson}) AND json_type(${t.itemsJson}) = 'array'`),
+  ],
+);

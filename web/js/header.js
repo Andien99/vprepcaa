@@ -18,7 +18,18 @@ export function renderAccountNav(me) {
   const name = document.createElement('span');
   name.className = 'nav-name';
   name.textContent = `Hi, ${first}`;
-  nav.append(name);
+  const avatar = document.createElement('span');
+  avatar.className = 'avatar';
+  avatar.setAttribute('aria-hidden', 'true');
+  if (me.image) {
+    const img = document.createElement('img');
+    img.src = me.image;
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => img.replaceWith(first.charAt(0).toUpperCase()));
+    avatar.append(img);
+  } else avatar.textContent = first.charAt(0).toUpperCase();
+  nav.append(name, avatar);
   if (!onDashboard) {
     const a = document.createElement('a');
     a.className = 'btn btn-header';

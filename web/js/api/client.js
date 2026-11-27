@@ -92,3 +92,14 @@ export async function listSubjects() {
 export async function createClass(input) {
   return postJson('/api/v1/classes', input);
 }
+
+/**
+ * The student dashboard (students only).
+ * @returns {Promise<any | null>} null when signed out or not a student
+ */
+export async function getDashboard() {
+  const res = await fetch('/api/v1/dashboard', { credentials: 'same-origin' });
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw new Error(`dashboard failed: ${res.status}`);
+  return res.json();
+}

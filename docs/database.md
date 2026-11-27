@@ -210,6 +210,13 @@ Current state per student per question, recomputed by the Worker after each atte
 This replaces the original app's per-device IndexedDB state, so progress syncs across devices. Topic, chapter and subject mastery are aggregated by joining through `question_topics`. Primary key `(user_id, question_id)`, with indexes for "due now" and the fix list.
 - **Relationships**: `user_id → users` and `question_id → questions` (both `CASCADE`, because it is derived data).
 
+#### `daily_sets` (migration 0007)
+A student's daily questions for one subject on one day, frozen so reloads and other devices see the same set.
+- `set_date` is the Melbourne calendar day (`YYYY-MM-DD`); `UNIQUE (user_id, subject_id, set_date)`.
+- `items_json` is an ordered array of `{"q": question id, "k": kind}`, kind being `fix`, `retrieval`, `strengthen`, `stretch` or `new`.
+- Written by `GET /api/v1/dashboard` the first time a student opens it each day (`worker/src/lib/daily.js` chooses the questions with the Pixel Practice rules, from chapters their teacher has opened). A question counts as done when the student answers it that day, from any source.
+- **Relationships**: `user_id → users` and `subject_id → subjects` (both `CASCADE`).
+
 #### `achievements`
 The badge catalogue (global): `code` (unique), name, description, `category`, `icon_key` (an R2 pixel-art badge), `criteria_json` and `points`.
 - **Relationships**: parent of user_achievements (`RESTRICT`; retire with `is_active = 0`).
@@ -302,6 +309,8 @@ Students with no class in a subject get no rows for it. If self-study without a 
 
 ## Seed data (`seeds/dev.sql`)
 
+`seeds/dev-dashboard.sql` loads after it (`npm run db:seed:local` runs both): 9 more `TEST` questions, homework that is open now (one due tomorrow, one next week, one not open yet), and five days of daily questions for Lena ending yesterday. Its times are relative to when it runs, so her streak and due dates always look live.
+
 Everything is fictional: `.test` emails, question refs starting `TEST`, invented statistics, and placeholder R2 keys. There is no VCAA content.
 
 - **People:** 1 school; 3 staff (an admin who co-teaches and runs a tutoring group, plus two teachers); 5 students, one of them suspended. All are on the allowlist with Google links, and none have tokens.
@@ -322,3 +331,21 @@ curl -H "Cookie: $(node scripts/dev-cookie.mjs dev-session-token-student-1 "$BET
 ```
 
 Verified 18 Nov 2026: all migrations apply in local D1 (wrangler), the seed loads, `/api/v1/me` returns the seeded student through Better Auth on the renamed tables, `npm test` passes 53/53 schema and 12/12 auth checks, `npm run check` passes, and `drizzle-kit generate` reports no drift.
+
+## Importing the question banks
+
+The Pixel Practice banks (`vcaa-bank.zip` for General and Methods, `chem-bank.zip` for Chemistry) are imported with `scripts/import-bank.mjs`. Exam content never enters git: everything it writes goes to `content/` (ignored).
+
+```sh
+# unzip each bank into its own folder first
+npm run import:bank -- --vcaa ../banks/vcaa --chem ../banks/chem
+npx wrangler d1 execute vprepcaa-db --remote --file=content/import/01_curriculum.sql
+npx wrangler d1 execute vprepcaa-db --remote --file=content/import/02_questions.sql
+npm run upload:content -- --remote          # images and solutions to the private R2 bucket
+```
+
+- Curriculum: General chapters are the Cambridge chapters (1–5, 7, 8, 10, 11, 13, 14; revision chapters left out) with exercises as topics; Methods chapters are the four Areas of Study with the 13 Pixel Practice topics; Chemistry chapters are the four Unit/AoS areas plus Cross-topic, with the 53 question types as topics. A question is tagged with all its topics; the first is primary.
+- Question ids are `q_<Notion page id>`, so a re-import updates rows in place (statements are upserts) and keeps every attempt linked.
+- R2 keys: `q/<gen34|mm34|chem34>/<ref>.png` for question images, `s/<subject>/<question id>.json` for the solution sections.
+- Run it on a local database first (`--local`). Don't run it on top of `seeds/dev.sql`: the seed's fictional chapters use the same chapter codes.
+- Verified 18 Nov 2026 against the uploaded banks: 20 chapters, 134 topics, 1,332 questions (512 General, 466 Methods, 354 Chemistry), all MC answers present except 4 voided Chemistry questions; 3 questions have no image (Methods 2018 E2 MC14 and MC17, Chemistry 2022 B Q1).
