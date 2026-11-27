@@ -346,6 +346,7 @@ npm run upload:content -- --remote          # images and solutions to the privat
 
 - Curriculum: General chapters are the Cambridge chapters (1–5, 7, 8, 10, 11, 13, 14; revision chapters left out) with exercises as topics; Methods chapters are the four Areas of Study with the 13 Pixel Practice topics; Chemistry chapters are the four Unit/AoS areas plus Cross-topic, with the 53 question types as topics. A question is tagged with all its topics; the first is primary.
 - Question ids are `q_<Notion page id>`, so a re-import updates rows in place (statements are upserts) and keeps every attempt linked.
-- R2 keys: `q/<gen34|mm34|chem34>/<ref>.png` for question images, `s/<subject>/<question id>.json` for the solution sections.
+- R2 keys: `q/<gen34|mm34|chem34>/<ref>.png` for question images, `s/<subject>/<question id>.json` for solutions: `{ ref, sec: [{t, md}], parts: [{label, marks, avg, zeroPct, solution, notes}] }`. `parts` splits a written question for self-marking (`scripts/lib/solution-parts.mjs`): 129/142 General, 109/186 Methods and 84/84 Chemistry written questions split; the rest are single-part and are marked whole.
+- `npm run upload:content` with no flags writes to local R2 in-process (about 15 seconds for the whole bank); `--remote` uploads with wrangler and can be resumed.
 - Run it on a local database first (`--local`). Don't run it on top of `seeds/dev.sql`: the seed's fictional chapters use the same chapter codes.
 - Verified 18 Nov 2026 against the uploaded banks: 20 chapters, 134 topics, 1,332 questions (512 General, 466 Methods, 354 Chemistry), all MC answers present except 4 voided Chemistry questions; 3 questions have no image (Methods 2018 E2 MC14 and MC17, Chemistry 2022 B Q1).

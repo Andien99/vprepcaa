@@ -124,3 +124,4 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 520px) { .nav-name { display: none; } .site-header .btn-header { padding: .35rem .7rem; } }

@@ -5,6 +5,7 @@ import { getDb, schema } from '../../db/client.js';
 import { normaliseCode, findClassByCode, enrolStudent, listMyClasses, createClass } from '../../lib/classes.js';
 import { makeJoinCookie, clearJoinCookie, readJoinCode } from '../../lib/join-cookie.js';
 import { buildDashboard } from '../../lib/dashboard.js';
+import { buildSession, questionAccess, getSolution, recordAttempt, submitHomework, PracticeError } from '../../lib/practice.js';
 
 /**
  * @typedef {{ id: string, name: string, email: string, image: string | null, role: string }} SessionUser
@@ -58,6 +59,77 @@ v1.get('/dashboard', requireUser, async (c) => {
   c.header('Cache-Control', 'no-store');
   return c.json(await buildDashboard(c.env.DB, c.var.user.id));
 });
+
+// ---- Practice --------------------------------------------------------------------
+
+/** Runs a practice handler, turning PracticeError into a JSON error response. */
+const practice = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof PracticeError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+
+/**
+ * A practice set: ?mode=daily|fix|mixed&subject=GEN34, ?mode=topic&chapter=<id>,
+ * or ?assignment=<id> for homework.
+ */
+v1.get(
+  '/practice/session',
+  requireUser,
+  practice(async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (c.var.user.role !== 'student') throw new PracticeError(403, 'students_only');
+    const q = c.req.query();
+    return buildSession(c.env.DB, c.var.user, { mode: q.mode ?? '', subject: q.subject, chapter: q.chapter, assignment: q.assignment });
+  }),
+);
+
+/** The question image, streamed from the private bucket to students who may see it. */
+v1.get('/questions/:id/image', requireUser, async (c) => {
+  const acc = await questionAccess(c.env.DB, c.var.user, c.req.param('id'));
+  if (!acc?.canSee || !acc.q.imageKey) return c.json({ error: 'not_found' }, 404);
+  const obj = await c.env.CONTENT.get(acc.q.imageKey);
+  if (!obj) return c.json({ error: 'not_found' }, 404);
+  return new Response(obj.body, {
+    headers: { 'Content-Type': obj.httpMetadata?.contentType ?? 'image/png', 'Cache-Control': 'private, max-age=86400', ETag: obj.httpEtag },
+  });
+});
+
+/** Worked solution, split by part, plus the answer key for multiple choice. */
+v1.get(
+  '/questions/:id/solution',
+  requireUser,
+  practice(async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    return getSolution(c.env, c.var.user, c.req.param('id'));
+  }),
+);
+
+/** POSTs that change a student's record must come from this site (on top of SameSite cookies). */
+const sameOrigin = async (/** @type {any} */ c, /** @type {() => Promise<void>} */ next) => {
+  const origin = c.req.header('Origin');
+  if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'bad_origin' }, 403);
+  await next();
+};
+
+/** Records an answer: auto-marked (multiple choice) or self-marked by part (written). */
+v1.post(
+  '/attempts',
+  sameOrigin,
+  requireUser,
+  practice(async (c) => recordAttempt(c.env.DB, c.var.user, await c.req.json().catch(() => ({})))),
+);
+
+/** Hands in homework. */
+v1.post(
+  '/assignments/:id/submit',
+  sameOrigin,
+  requireUser,
+  practice(async (c) => submitHomework(c.env.DB, c.var.user, c.req.param('id'))),
+);
 
 // ---- Joining a class with a code ------------------------------------------
 

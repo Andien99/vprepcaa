@@ -13,12 +13,13 @@
     "db:seed:local": "wrangler d1 execute vprepcaa-db --local --file=seeds/dev.sql && wrangler d1 execute vprepcaa-db --local --file=seeds/dev-dashboard.sql",
     "test:db": "node --no-warnings tests/db/schema.test.mjs",
     "test:auth": "node --no-warnings tests/auth/auth-writes.test.mjs",
-    "test": "npm run test:db && npm run test:auth && npm run test:join && npm run test:dashboard",
+    "test": "npm run test:db && npm run test:auth && npm run test:join && npm run test:dashboard && npm run test:practice",
     "db:migrate:preview": "wrangler d1 migrations apply vprepcaa-db-preview --remote --config wrangler.preview-migrations.jsonc",
     "test:join": "node --no-warnings tests/auth/join.test.mjs",
     "test:dashboard": "node --no-warnings tests/dashboard/dashboard.test.mjs",
     "import:bank": "node scripts/import-bank.mjs",
-    "upload:content": "node scripts/upload-content.mjs"
+    "upload:content": "node scripts/upload-content.mjs",
+    "test:practice": "node --no-warnings tests/practice/practice.test.mjs"
   },
   "dependencies": {
     "better-auth": "^1.7.25",

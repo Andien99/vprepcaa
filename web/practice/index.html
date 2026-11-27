@@ -7,28 +7,31 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/practice.css">
 </head>
 <body>
 <header class="site-header">
   <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="19">vprepcaa</a>
   <nav id="account-nav" aria-label="Account"></nav>
 </header>
-<main class="narrow">
-  <div class="card">
-    <span class="eyebrow">Coming next</span>
-    <h1 id="what" style="margin-top:.4rem">Practice</h1>
-    <p>The question screen is being brought over from Pixel Practice: answer-sheet ovals, working space, self-marking by part and worked solutions. Your dashboard already knows which questions are lined up for you.</p>
-    <a class="btn" href="/student/">Back to my dashboard</a>
+<main class="wide">
+  <p id="banner" class="banner toast" role="status" hidden></p>
+  <div id="pr" class="pr">
+    <div class="setbar" id="setbar"><div class="skel" style="min-height:40px;width:100%"></div></div>
+    <section class="card panel qcard" aria-label="Question" id="qcard"></section>
+    <section class="card panel acard" aria-label="Your answer" id="acard"><div class="body" id="abody"></div></section>
   </div>
 </main>
-<script type="module">
-  import { initHeader } from '/js/header.js';
-  initHeader();
-  const p = new URLSearchParams(location.search);
-  const what = p.get('assignment') ? 'Homework' : p.get('mode') === 'daily' ? "Today's questions" : p.get('mode') === 'fix' ? 'Fix your mistakes' : p.get('mode') === 'topic' ? 'Chapter practice' : 'Practice';
-  document.getElementById('what').textContent = what;
-</script>
+<dialog id="confirm" class="sheet-dialog" aria-labelledby="confirm-h">
+  <div id="classes-wrap" style="padding:18px 20px">
+    <h2 id="confirm-h" style="margin-top:0">Hand in your homework?</h2>
+    <p id="confirm-text" class="muted"></p>
+    <div class="actions-row"><button class="btn" id="confirm-yes" type="button">Hand it in</button><button class="btn btn-secondary" id="confirm-no" type="button">Keep working</button></div>
+  </div>
+</dialog>
+<script type="module" src="/js/practice.js"></script>
 </body>
 </html>
