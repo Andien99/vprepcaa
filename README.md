@@ -33,6 +33,17 @@ Check: http://localhost:8787/api/v1/health
 
 API: `GET /api/v1/practice/session`, `GET /api/v1/questions/:id/image`, `GET /api/v1/questions/:id/solution`, `POST /api/v1/attempts`, `POST /api/v1/assignments/:id/submit` (`worker/src/lib/practice.js`). Images and solutions come from the private R2 bucket, only to students who can see the question; solutions stay hidden while homework holding the question keeps them hidden.
 
+## Question bank
+
+`/bank/` is the Notion question database rebuilt for the app: every question in a colour-coded table with its Notion name, question type, study design area, paper, format, marks, difficulty, state average and how often it is examined. Group by area, type, paper, difficulty or chapter; filter by area, type, year, exam, format and difficulty; sort any column. Clicking a row opens the question image and its worked solution.
+
+- Students see the questions in their open chapters, with their own result on each (full, part, zero, fix list), can star questions and "Practise these" sends the filtered set to `/practice/?mode=pick`. Their weakest question types show on the dashboard as coloured links into the bank.
+- Teachers edit their school's questions and add SAC or trial papers; admins edit the shared VCAA bank. The editor covers name (with the naming convention), paper, answer, marks, difficulty, types, areas, topic, exam statistics, image and solution sections, and publishing.
+- New exams: "New paper" then "Add questions" (drop the question images, named like `MC12.png` or `2026 E2 Q3.png`, or type ranges like `MC1-MC20, Q1-Q6`). Questions are created as drafts, then published.
+- Admins manage question types and areas (rename, recolour, merge) under "Types & areas".
+
+API (`worker/src/lib/bank.js`): `GET /api/v1/bank/subjects|meta|questions`, `PUT|DELETE /bank/stars/:id`, `PATCH /bank/questions/:id`, `PUT /bank/questions/:id/solution|image`, `POST /bank/papers|questions|types`, `PATCH /bank/types/:id`, `POST /bank/types/:id/merge`, `PATCH /bank/areas/:id`. Tables and permissions: [docs/database.md](docs/database.md#question-bank-migration-0008).
+
 ## Database
 
 ```

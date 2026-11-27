@@ -15,8 +15,8 @@ import { buildDashboard } from './dashboard.js';
 
 const DAY = 86_400_000;
 /** Practice mode -> question_attempts.source */
-export const SOURCE = /** @type {Record<string, string>} */ ({ daily: 'daily', assignment: 'assignment', topic: 'topic', fix: 'history', mixed: 'free' });
-const SET_SIZE = { fix: 10, topic: 10, mixed: 8 };
+export const SOURCE = /** @type {Record<string, string>} */ ({ daily: 'daily', assignment: 'assignment', topic: 'topic', fix: 'history', mixed: 'free', pick: 'free' });
+const SET_SIZE = { fix: 10, topic: 10, mixed: 8, pick: 40 };
 const OPTIONS = /** @type {Record<string, string[]>} */ ({ sub_chem34: ['A', 'B', 'C', 'D'] });
 export const optionsFor = (/** @type {string} */ subjectId) => OPTIONS[subjectId] ?? ['A', 'B', 'C', 'D', 'E'];
 
@@ -38,7 +38,8 @@ const fail = (/** @type {number} */ status, /** @type {string} */ code) => {
 
 const QUESTION_COLS = `q.id, q.subject_id AS subjectId, q.school_id AS schoolId, q.source_ref AS ref, q.marks, q.format, q.correct_option AS correctOption,
   q.image_key AS imageKey, q.solution_key AS solutionKey, q.difficulty, q.state_pct_correct AS statePct, q.is_active AS isActive,
-  t.id AS topicId, t.title AS topic, t.chapter_id AS chapterId`;
+  t.id AS topicId, t.title AS topic, t.chapter_id AS chapterId,
+  (SELECT x.question_type_id FROM question_type_tags x WHERE x.question_id = q.id AND x.is_primary = 1) AS typeId`;
 const QUESTION_FROM = `FROM questions q LEFT JOIN question_topics qt ON qt.question_id = q.id AND qt.is_primary = 1 LEFT JOIN topics t ON t.id = qt.topic_id`;
 
 /** Homework (published and open) that holds this question, for this student. */
@@ -117,14 +118,14 @@ function questionView(/** @type {any} */ q) {
  * Builds a practice set.
  * @param {D1Database} DB
  * @param {User} user
- * @param {{ mode: string, subject?: string | null, chapter?: string | null, assignment?: string | null }} p
+ * @param {{ mode: string, subject?: string | null, chapter?: string | null, assignment?: string | null, ids?: string | null }} p
  * @param {number} now
  */
 export async function buildSession(DB, user, p, now = Date.now()) {
   const today = localDate(now);
   if (p.assignment) return homeworkSession(DB, user, p.assignment, now);
   const mode = p.mode;
-  if (!['daily', 'fix', 'topic', 'mixed'].includes(mode)) fail(400, 'bad_mode');
+  if (!['daily', 'fix', 'topic', 'mixed', 'pick'].includes(mode)) fail(400, 'bad_mode');
 
   // The subject (from its code) or the chapter, and the student's open questions in it.
   let subjectId = null;
@@ -194,10 +195,18 @@ export async function buildSession(DB, user, p, now = Date.now()) {
       .sort((a, b) => rank(a) - rank(b) || (diff[a.difficulty] ?? 1) - (diff[b.difficulty] ?? 1) || (b.statePct ?? 50) - (a.statePct ?? 50) || a.ref.localeCompare(b.ref))
       .slice(0, SET_SIZE.topic)
       .map((q) => ({ q: q.id, k: stats.has(q.id) ? (/** @type {any} */ (stats.get(q.id)).fix ? 'fix' : 'retrieval') : 'new' }));
+  } else if (mode === 'pick') {
+    // Questions chosen in the bank (filters, stars), in the order given; only ones the student may see.
+    title = 'Your selection';
+    const ids = String(p.ids ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, SET_SIZE.pick);
+    if (!ids.length) fail(400, 'ids_required');
+    items = ids.filter((id) => byId.has(id)).map((id) => ({ q: id }));
   } else {
     title = `Mixed ${subject.name.replace(/ Units 3&4$/, '')} set`;
-    const topics = topicStats(attempts, new Map(qs.map((q) => [q.id, q.topicId])), now);
-    items = pickDailySet({ questions: qs, stats, topics, today, seed: `${user.id}:mixed:${now - (now % 3_600_000)}`, size: SET_SIZE.mixed });
+    // Mastery is tracked per question type (Pixel Practice), falling back to the topic.
+    const skillQs = qs.map((q) => ({ ...q, topicId: q.typeId ?? q.topicId }));
+    const topics = topicStats(attempts, new Map(skillQs.map((q) => [q.id, q.topicId])), now);
+    items = pickDailySet({ questions: skillQs, stats, topics, today, seed: `${user.id}:mixed:${now - (now % 3_600_000)}`, size: SET_SIZE.mixed });
   }
 
   const answeredToday = new Set(attempts.filter((a) => localDate(a.submittedAt) === today).map((a) => a.questionId));
