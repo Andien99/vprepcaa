@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { getDb, schema } from '../db/client.js';
 import { findClassByCode, enrolStudent } from '../lib/classes.js';
 import { readJoinCode } from '../lib/join-cookie.js';
+import { claimInvites } from '../lib/profile.js';
 
 /** Cookie header of the request a Better Auth hook runs in (absent outside endpoints). */
 function cookieOf(/** @type {any} */ ctx) {
@@ -57,27 +58,37 @@ export function createAuth(env) {
             if (u?.status === 'suspended') throw new APIError('FORBIDDEN', { message: 'account_suspended' });
             return { data: s };
           },
-          // Signed in with a class code (new or existing student): enrol them in that class.
+          // Students are put into classes on sign-in: every class that has their email on
+          // its list (class_invites), and the class whose code they signed in with.
           after: async (s, ctx) => {
+            const u = await db.select({ role: schema.user.platformRole, email: schema.user.email }).from(schema.user).where(eq(schema.user.id, s.userId)).get();
+            if (!u) return;
+            // Signed up before being added to the allowlist as a teacher or admin: promote now.
+            if (u.role === 'student') {
+              const row = await db.select().from(schema.allowlist).where(eq(schema.allowlist.email, u.email)).get();
+              if (row && row.role !== 'student') {
+                await db.update(schema.user).set({ platformRole: row.role }).where(eq(schema.user.id, s.userId)).run();
+                return;
+              }
+            }
+            if (u.role !== 'student') return;
+            await claimInvites(env.DB, s.userId, u.email);
             const code = await readJoinCode(env.BETTER_AUTH_SECRET, cookieOf(ctx));
             if (!code) return;
             const cls = await findClassByCode(db, code);
-            const u = await db.select({ role: schema.user.platformRole }).from(schema.user).where(eq(schema.user.id, s.userId)).get();
-            if (cls && u?.role === 'student') await enrolStudent(db, cls.id, s.userId);
+            if (cls) await enrolStudent(db, cls.id, s.userId);
           },
         },
       },
       user: {
         create: {
-          // Who can create an account: emails on the allowlist (role from the list), or
-          // anyone arriving with a valid class code (always a student).
-          before: async (u, ctx) => {
+          // Anyone with a Google account can sign up. New accounts are students unless the
+          // allowlist gives the email another role (teachers, admins). Until a student joins
+          // a class (code or teacher-added email) they can't see any exam content.
+          before: async (u) => {
             const email = String(u.email || '').toLowerCase();
             const row = await db.select().from(schema.allowlist).where(eq(schema.allowlist.email, email)).get();
-            if (row) return { data: { ...u, email, platformRole: row.role } };
-            const code = await readJoinCode(env.BETTER_AUTH_SECRET, cookieOf(ctx));
-            if (code && (await findClassByCode(db, code))) return { data: { ...u, email, platformRole: 'student' } };
-            throw new APIError('FORBIDDEN', { message: 'not_invited' });
+            return { data: { ...u, email, platformRole: row?.role ?? 'student' } };
           },
         },
       },

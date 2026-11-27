@@ -6,6 +6,7 @@ import { normaliseCode, findClassByCode, enrolStudent, listMyClasses, createClas
 import { makeJoinCookie, clearJoinCookie, readJoinCode } from '../../lib/join-cookie.js';
 import { buildDashboard } from '../../lib/dashboard.js';
 import { buildSession, questionAccess, getSolution, recordAttempt, submitHomework, PracticeError } from '../../lib/practice.js';
+import { getProfile, saveProfile, claimInvites, listInvites, addInvites, removeInvite, ProfileError } from '../../lib/profile.js';
 import { bankSubjects, bankMeta, bankQuestions, setStar, updateQuestion, saveSolution, saveImage, createPaper, createQuestion, createType, updateType, mergeType, updateArea, BankError } from '../../lib/bank.js';
 
 /**
@@ -42,13 +43,40 @@ const publicClass = (/** @type {any} */ cls) => ({
   academicYear: cls.academicYear,
 });
 
+/** Rejects writes sent from another site (a browser always sends Origin on these). */
+const sameOriginEarly = async (/** @type {any} */ c, /** @type {() => Promise<void>} */ next) => {
+  const origin = c.req.header('Origin');
+  if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'bad_origin' }, 403);
+  await next();
+};
+
 v1.get('/health', (c) => c.json({ ok: true, service: 'vprepcaa', version: 'v1' }));
 
+/**
+ * The signed-in user, their profile and classes. Students are also put into any class
+ * that has added their email since they last signed in (so "Check again" works).
+ */
 v1.get('/me', requireUser, async (c) => {
   const user = c.var.user;
-  const classes = await listMyClasses(getDb(c.env), user.id);
-  return c.json({ ...user, classes });
+  c.header('Cache-Control', 'no-store');
+  const joined = user.role === 'student' ? await claimInvites(c.env.DB, user.id, user.email) : [];
+  const [classes, profile] = await Promise.all([listMyClasses(getDb(c.env), user.id), getProfile(c.env.DB, user.id)]);
+  return c.json({ ...user, profile, onboarded: profile.onboarded, classes, joinedByEmail: joined });
 });
+
+/** Runs a profile/invite handler, turning ProfileError into a JSON error response. */
+const prof = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    c.header('Cache-Control', 'no-store');
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof ProfileError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+
+/** Saves the profile from /welcome (first and last name, school, year level, subjects). */
+v1.put('/me/profile', sameOriginEarly, requireUser, prof(async (c) => ({ profile: await saveProfile(c.env.DB, c.var.user, await c.req.json().catch(() => ({}))) })));
 
 /**
  * The student dashboard: progress per subject, chapters, homework, today's daily
@@ -224,7 +252,8 @@ v1.post('/classes/join', requireUser, async (c) => {
 
 // ---- Teachers ---------------------------------------------------------------
 
-v1.get('/subjects', requireUser, requireTeacher, async (c) => {
+/** Active subjects (for the profile form and creating classes). */
+v1.get('/subjects', requireUser, async (c) => {
   const rows = await getDb(c.env)
     .select({ id: schema.subjects.id, code: schema.subjects.code, name: schema.subjects.name })
     .from(schema.subjects)
@@ -252,3 +281,14 @@ v1.post('/classes', requireUser, requireTeacher, async (c) => {
   const created = await createClass(db, { name, subjectId, academicYear, createdBy: c.var.user.id });
   return c.json({ class: { id: created.id, name, academicYear, joinCode: created.joinCode } }, 201);
 });
+
+// ---- Class lists by email ------------------------------------------------------------
+// Teachers add students' emails to a class; those students are put into the class when
+// they sign in, without needing the code.
+
+/** The class's email list (who has joined) and its students. */
+v1.get('/classes/:id/invites', requireUser, prof((c) => listInvites(c.env.DB, c.var.user, c.req.param('id'))));
+/** Adds emails (pasted text or a list). Existing student accounts join straight away. */
+v1.post('/classes/:id/invites', sameOriginEarly, requireUser, prof(async (c) => addInvites(c.env.DB, c.var.user, c.req.param('id'), await c.req.json().catch(() => ({})))));
+/** Removes an email from the list (a student already in the class stays in it). */
+v1.delete('/classes/:id/invites/:inviteId', sameOriginEarly, requireUser, prof((c) => removeInvite(c.env.DB, c.var.user, c.req.param('id'), c.req.param('inviteId'))));

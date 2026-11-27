@@ -5,7 +5,7 @@ VCAA exam practice platform. Successor to `vcaa-pixel-practice` (the original si
 - Frontend: vanilla HTML, CSS and JavaScript (ES modules) in `web/`
 - Backend: Cloudflare Worker with Hono in `worker/src/`, API under `/api/v1`
 - Data: Cloudflare D1 (relational, schema in `migrations/`, documented in `docs/database.md`) and R2 (images and solutions, private)
-- Auth: Google sign-in through Better Auth. Students sign up with a class code from their teacher; staff are added through the `allowlist` table
+- Auth: Google sign-in through Better Auth. Anyone can create an account; new accounts fill in a profile on `/welcome`, then students join a class with its code or are added by their teacher's email list. Teachers and admins are given their role through the `allowlist` table
 
 **This repo is public. Never commit exam questions, answer keys, worked solutions, images from VCAA papers, or any secret.**
 
@@ -17,6 +17,18 @@ npm run dev      # http://localhost:8787
 ```
 
 Check: http://localhost:8787/api/v1/health
+
+## Accounts, profiles and classes
+
+1. **Sign in with Google** (`/signin`). Any Google account can sign up. It's a student account unless the email is on `allowlist` as a teacher or admin (an account added to the allowlist later is promoted on its next sign-in).
+2. **Profile** (`/welcome`). First and last name, school (optional), year level (students, 7–12) and subjects. Every page sends an account without a profile here first; "Edit profile" brings it back later.
+3. **Join a class.** A student who isn't in a class sees only "Join your class" on the dashboard, with two ways in:
+   - the 6-character class code from their teacher, or
+   - their teacher adds their email under **Students and emails** on the class. They're put in the class as soon as they sign in with that Google account, or straight away if they already have one ("check again" on the gate picks it up).
+
+Until a student is in a class, the bank and practice show them no exam content. Teachers see each class's students (and whether they joined by code or email list) and the emails still waiting to sign in.
+
+API: `GET /api/v1/me` (profile, classes; also claims email-list classes), `PUT /api/v1/me/profile`, `GET|POST /api/v1/classes/:id/invites`, `DELETE /api/v1/classes/:id/invites/:inviteId` (`worker/src/lib/profile.js`). Tests: `npm run test:onboarding`.
 
 ## Student dashboard
 

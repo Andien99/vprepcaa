@@ -85,11 +85,18 @@ try {
   await db.prepare(`UPDATE users SET status = 'suspended' WHERE id = ?`).bind(created.user.id).run();
   await throws('suspended user cannot start a session', () => ia.createSession(created.user.id), /account_suspended/);
 
-  // Not on the allowlist.
-  await throws('uninvited email cannot sign up', () => ia.createOAuthUser(
-    { email: 'stranger@example.test', name: 'Stranger', emailVerified: true },
+  // Not on the allowlist: anyone can sign up, as a student.
+  const stranger = await ia.createOAuthUser(
+    { email: 'Stranger@example.test', name: 'Stranger', emailVerified: true },
     { providerId: 'google', accountId: 'google-sub-stranger' },
-  ), /not_invited/);
+  );
+  const su = await db.prepare(`SELECT email, platform_role AS r, onboarded_at AS o FROM users WHERE id = ?`).bind(stranger.user.id).first();
+  ok('anyone can sign up: a student with no profile yet', su?.r === 'student' && su?.email === 'stranger@example.test' && su?.o === null);
+
+  // Added to the allowlist as a teacher after signing up: promoted on the next sign-in.
+  await db.prepare(`INSERT INTO allowlist (email, role) VALUES ('stranger@example.test', 'teacher')`).run();
+  await ia.createSession(stranger.user.id);
+  ok('allowlisted later: promoted to teacher on sign-in', (await db.prepare(`SELECT platform_role AS r FROM users WHERE id = ?`).bind(stranger.user.id).first())?.r === 'teacher');
 
   // The database guard still catches anything that slips past the hooks.
   await throws('database rejects a plaintext token written directly',

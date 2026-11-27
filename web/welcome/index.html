@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set up your profile | vprepcaa</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/welcome.css">
+</head>
+<body class="grid-paper">
+<header class="site-header">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="19">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"></nav>
+</header>
+<main class="narrow welcome">
+  <ol class="steps" id="steps" aria-label="Getting started">
+    <li class="on"><b>1</b>Your profile</li>
+    <li id="step2"><b>2</b>Join your class</li>
+  </ol>
+
+  <form id="profile-form" class="card sheet" novalidate hidden>
+    <span class="eyebrow" id="eyebrow">Welcome to vprepcaa</span>
+    <h1 id="title">Set up your profile</h1>
+    <p class="muted" id="intro">This is how your teacher will see you. You can change it later.</p>
+
+    <div class="pair">
+      <div>
+        <label for="first">First name</label>
+        <input id="first" autocomplete="given-name" maxlength="40" required>
+      </div>
+      <div>
+        <label for="last">Last name</label>
+        <input id="last" autocomplete="family-name" maxlength="40" required>
+      </div>
+    </div>
+
+    <label for="school">School <span class="opt">optional</span></label>
+    <input id="school" autocomplete="organization" maxlength="80" placeholder="e.g. St Albans Secondary College">
+
+    <fieldset id="year-set">
+      <legend>Year level</legend>
+      <div class="choices" id="years"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend id="subjects-legend">Subjects you're studying</legend>
+      <div class="choices subjects" id="subjects"></div>
+    </fieldset>
+
+    <p class="email-note muted small" id="email-note"></p>
+    <button class="btn btn-block" id="save" type="submit">Continue</button>
+    <p id="message" class="form-message" role="alert"></p>
+  </form>
+</main>
+<script type="module" src="/js/welcome.js"></script>
+</body>
+</html>
