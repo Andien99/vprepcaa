@@ -57,6 +57,20 @@
       "when": 1795010000000,
       "tag": "0007_daily_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795041063018,
+      "tag": "0008_question_bank",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795351081722,
+      "tag": "0009_onboarding",
+      "breakpoints": true
     }
   ]
 }

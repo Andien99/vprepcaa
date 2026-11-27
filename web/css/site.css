@@ -124,3 +124,21 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 520px) { .nav-name { display: none; } .site-header .btn-header { padding: .35rem .7rem; } }
+
+/* Notion tag colours (light theme): the question bank's colour coding.
+   .nc-<colour> is a tag; .nd-<colour> is a dot. Colours come from the database. */
+.nt { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 1px 7px; border-radius: 4px; font-size: .8rem; font-weight: 500; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.nc-default { background: rgba(227, 226, 224, .55); color: #32302c; }
+.nc-gray { background: #e3e2e0; color: #32302c; }
+.nc-brown { background: #eee0da; color: #442a1e; }
+.nc-orange { background: #fadec9; color: #49290e; }
+.nc-yellow { background: #fdecc8; color: #402c1b; }
+.nc-green { background: #dbeddb; color: #1c3829; }
+.nc-blue { background: #d3e5ef; color: #183347; }
+.nc-purple { background: #e8deee; color: #412454; }
+.nc-pink { background: #f5e0e9; color: #4c2337; }
+.nc-red { background: #ffe2dd; color: #5d1715; }
+.nd { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.nd-default, .nd-gray { background: #9b9a97; } .nd-brown { background: #64473a; } .nd-orange { background: #d9730d; } .nd-yellow { background: #dfab01; }
+.nd-green { background: #0f7b6c; } .nd-blue { background: #0b6e99; } .nd-purple { background: #6940a5; } .nd-pink { background: #ad1a72; } .nd-red { background: #e03e3e; }

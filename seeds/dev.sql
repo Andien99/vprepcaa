@@ -200,3 +200,12 @@ INSERT INTO user_achievements (id, user_id, achievement_id, awarded_at, context_
   ('ua_01', 'usr_student1', 'ach_first', unixepoch('2026-11-12T08:01:10Z') * 1000, '{"subject":"GEN34"}'),
   ('ua_02', 'usr_student2', 'ach_first', unixepoch('2026-11-16T09:02:00Z') * 1000, '{"subject":"GEN34"}'),
   ('ua_03', 'usr_student4', 'ach_first', unixepoch('2026-11-17T18:01:30Z') * 1000, '{"subject":"MM34"}');
+
+-- Profiles (migration 0009): seeded accounts have already been through /welcome.
+UPDATE users SET onboarded_at = unixepoch() * 1000,
+  first_name = CASE id WHEN 'usr_admin' THEN 'Andy' WHEN 'usr_teacher1' THEN 'Maria' WHEN 'usr_teacher2' THEN 'Daniel'
+    WHEN 'usr_student1' THEN 'Lena' WHEN 'usr_student2' THEN 'Tom' WHEN 'usr_student3' THEN 'Priya' WHEN 'usr_student4' THEN 'Marco' ELSE 'Jess' END,
+  last_name = CASE id WHEN 'usr_admin' THEN 'Admin' WHEN 'usr_teacher1' THEN 'Rivera' WHEN 'usr_teacher2' THEN 'Okafor'
+    WHEN 'usr_student1' THEN 'Nguyen' WHEN 'usr_student2' THEN 'Brown' WHEN 'usr_student3' THEN 'Singh' WHEN 'usr_student4' THEN 'Di Stefano' ELSE 'Walker' END;
+INSERT INTO user_subjects (user_id, subject_id) VALUES
+  ('usr_student1', 'sub_gen34'), ('usr_student1', 'sub_mm34'), ('usr_student2', 'sub_gen34'), ('usr_student3', 'sub_mm34'), ('usr_student4', 'sub_gen34');

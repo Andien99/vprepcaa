@@ -5,6 +5,9 @@ import { getDb, schema } from '../../db/client.js';
 import { normaliseCode, findClassByCode, enrolStudent, listMyClasses, createClass } from '../../lib/classes.js';
 import { makeJoinCookie, clearJoinCookie, readJoinCode } from '../../lib/join-cookie.js';
 import { buildDashboard } from '../../lib/dashboard.js';
+import { buildSession, questionAccess, getSolution, recordAttempt, submitHomework, PracticeError } from '../../lib/practice.js';
+import { getProfile, saveProfile, claimInvites, listInvites, addInvites, removeInvite, ProfileError } from '../../lib/profile.js';
+import { bankSubjects, bankMeta, bankQuestions, setStar, updateQuestion, saveSolution, saveImage, createPaper, createQuestion, createType, updateType, mergeType, updateArea, BankError } from '../../lib/bank.js';
 
 /**
  * @typedef {{ id: string, name: string, email: string, image: string | null, role: string }} SessionUser
@@ -40,13 +43,40 @@ const publicClass = (/** @type {any} */ cls) => ({
   academicYear: cls.academicYear,
 });
 
+/** Rejects writes sent from another site (a browser always sends Origin on these). */
+const sameOriginEarly = async (/** @type {any} */ c, /** @type {() => Promise<void>} */ next) => {
+  const origin = c.req.header('Origin');
+  if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'bad_origin' }, 403);
+  await next();
+};
+
 v1.get('/health', (c) => c.json({ ok: true, service: 'vprepcaa', version: 'v1' }));
 
+/**
+ * The signed-in user, their profile and classes. Students are also put into any class
+ * that has added their email since they last signed in (so "Check again" works).
+ */
 v1.get('/me', requireUser, async (c) => {
   const user = c.var.user;
-  const classes = await listMyClasses(getDb(c.env), user.id);
-  return c.json({ ...user, classes });
+  c.header('Cache-Control', 'no-store');
+  const joined = user.role === 'student' ? await claimInvites(c.env.DB, user.id, user.email) : [];
+  const [classes, profile] = await Promise.all([listMyClasses(getDb(c.env), user.id), getProfile(c.env.DB, user.id)]);
+  return c.json({ ...user, profile, onboarded: profile.onboarded, classes, joinedByEmail: joined });
 });
+
+/** Runs a profile/invite handler, turning ProfileError into a JSON error response. */
+const prof = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    c.header('Cache-Control', 'no-store');
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof ProfileError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+
+/** Saves the profile from /welcome (first and last name, school, year level, subjects). */
+v1.put('/me/profile', sameOriginEarly, requireUser, prof(async (c) => ({ profile: await saveProfile(c.env.DB, c.var.user, await c.req.json().catch(() => ({}))) })));
 
 /**
  * The student dashboard: progress per subject, chapters, homework, today's daily
@@ -58,6 +88,117 @@ v1.get('/dashboard', requireUser, async (c) => {
   c.header('Cache-Control', 'no-store');
   return c.json(await buildDashboard(c.env.DB, c.var.user.id));
 });
+
+// ---- Practice --------------------------------------------------------------------
+
+/** Runs a practice handler, turning PracticeError into a JSON error response. */
+const practice = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof PracticeError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+
+/**
+ * A practice set: ?mode=daily|fix|mixed&subject=GEN34, ?mode=topic&chapter=<id>,
+ * or ?assignment=<id> for homework.
+ */
+v1.get(
+  '/practice/session',
+  requireUser,
+  practice(async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (c.var.user.role !== 'student') throw new PracticeError(403, 'students_only');
+    const q = c.req.query();
+    return buildSession(c.env.DB, c.var.user, { mode: q.mode ?? '', subject: q.subject, chapter: q.chapter, assignment: q.assignment, ids: q.ids });
+  }),
+);
+
+/** The question image, streamed from the private bucket to students who may see it. */
+v1.get('/questions/:id/image', requireUser, async (c) => {
+  const acc = await questionAccess(c.env.DB, c.var.user, c.req.param('id'));
+  if (!acc?.canSee || !acc.q.imageKey) return c.json({ error: 'not_found' }, 404);
+  const obj = await c.env.CONTENT.get(acc.q.imageKey);
+  if (!obj) return c.json({ error: 'not_found' }, 404);
+  return new Response(obj.body, {
+    headers: { 'Content-Type': obj.httpMetadata?.contentType ?? 'image/png', 'Cache-Control': 'private, max-age=86400', ETag: obj.httpEtag },
+  });
+});
+
+/** Worked solution, split by part, plus the answer key for multiple choice. */
+v1.get(
+  '/questions/:id/solution',
+  requireUser,
+  practice(async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    return getSolution(c.env, c.var.user, c.req.param('id'));
+  }),
+);
+
+/** POSTs that change a student's record must come from this site (on top of SameSite cookies). */
+const sameOrigin = async (/** @type {any} */ c, /** @type {() => Promise<void>} */ next) => {
+  const origin = c.req.header('Origin');
+  if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'bad_origin' }, 403);
+  await next();
+};
+
+/** Records an answer: auto-marked (multiple choice) or self-marked by part (written). */
+v1.post(
+  '/attempts',
+  sameOrigin,
+  requireUser,
+  practice(async (c) => recordAttempt(c.env.DB, c.var.user, await c.req.json().catch(() => ({})))),
+);
+
+/** Hands in homework. */
+v1.post(
+  '/assignments/:id/submit',
+  sameOrigin,
+  requireUser,
+  practice(async (c) => submitHomework(c.env.DB, c.var.user, c.req.param('id'))),
+);
+
+// ---- Question bank (the Notion bank design) -----------------------------------------
+
+/** Runs a bank handler, turning BankError into a JSON error response. */
+const bank = (/** @type {(c: any) => Promise<any>} */ fn) => async (/** @type {any} */ c) => {
+  try {
+    c.header('Cache-Control', 'no-store');
+    return c.json(await fn(c));
+  } catch (e) {
+    if (e instanceof BankError) return c.json({ error: e.code }, /** @type {any} */ (e.status));
+    throw e;
+  }
+};
+const body = async (/** @type {any} */ c) => c.req.json().catch(() => ({}));
+
+/** Subjects this user can open in the bank. */
+v1.get('/bank/subjects', requireUser, bank((c) => bankSubjects(c.env.DB, c.var.user)));
+/** Areas, question types, papers, chapters of a subject, and what the user may edit. */
+v1.get('/bank/meta', requireUser, bank((c) => bankMeta(c.env.DB, c.var.user, c.req.query('subject') ?? '')));
+/** The bank's rows for a subject (students: what they may see, with their results). */
+v1.get('/bank/questions', requireUser, bank((c) => bankQuestions(c.env.DB, c.var.user, c.req.query('subject') ?? '')));
+/** Star / unstar a question. */
+v1.put('/bank/stars/:id', sameOrigin, requireUser, bank((c) => setStar(c.env.DB, c.var.user, c.req.param('id'), true)));
+v1.delete('/bank/stars/:id', sameOrigin, requireUser, bank((c) => setStar(c.env.DB, c.var.user, c.req.param('id'), false)));
+/** Editing (admins: shared bank; teachers: their school's questions). */
+v1.patch('/bank/questions/:id', sameOrigin, requireUser, bank(async (c) => updateQuestion(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
+v1.put('/bank/questions/:id/solution', sameOrigin, requireUser, bank(async (c) => saveSolution(c.env, c.var.user, c.req.param('id'), await body(c))));
+v1.put(
+  '/bank/questions/:id/image',
+  sameOrigin,
+  requireUser,
+  bank(async (c) => saveImage(c.env, c.var.user, c.req.param('id'), await c.req.arrayBuffer(), c.req.header('Content-Type') ?? '')),
+);
+v1.post('/bank/papers', sameOrigin, requireUser, bank(async (c) => createPaper(c.env.DB, c.var.user, await body(c))));
+v1.post('/bank/questions', sameOrigin, requireUser, bank(async (c) => createQuestion(c.env.DB, c.var.user, await body(c))));
+/** Taxonomy (admins): question types and study design areas. */
+v1.post('/bank/types', sameOrigin, requireUser, bank(async (c) => createType(c.env.DB, c.var.user, await body(c))));
+v1.patch('/bank/types/:id', sameOrigin, requireUser, bank(async (c) => updateType(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
+v1.post('/bank/types/:id/merge', sameOrigin, requireUser, bank(async (c) => mergeType(c.env.DB, c.var.user, c.req.param('id'), (await body(c)).into)));
+v1.patch('/bank/areas/:id', sameOrigin, requireUser, bank(async (c) => updateArea(c.env.DB, c.var.user, c.req.param('id'), await body(c))));
 
 // ---- Joining a class with a code ------------------------------------------
 
@@ -111,7 +252,8 @@ v1.post('/classes/join', requireUser, async (c) => {
 
 // ---- Teachers ---------------------------------------------------------------
 
-v1.get('/subjects', requireUser, requireTeacher, async (c) => {
+/** Active subjects (for the profile form and creating classes). */
+v1.get('/subjects', requireUser, async (c) => {
   const rows = await getDb(c.env)
     .select({ id: schema.subjects.id, code: schema.subjects.code, name: schema.subjects.name })
     .from(schema.subjects)
@@ -139,3 +281,14 @@ v1.post('/classes', requireUser, requireTeacher, async (c) => {
   const created = await createClass(db, { name, subjectId, academicYear, createdBy: c.var.user.id });
   return c.json({ class: { id: created.id, name, academicYear, joinCode: created.joinCode } }, 201);
 });
+
+// ---- Class lists by email ------------------------------------------------------------
+// Teachers add students' emails to a class; those students are put into the class when
+// they sign in, without needing the code.
+
+/** The class's email list (who has joined) and its students. */
+v1.get('/classes/:id/invites', requireUser, prof((c) => listInvites(c.env.DB, c.var.user, c.req.param('id'))));
+/** Adds emails (pasted text or a list). Existing student accounts join straight away. */
+v1.post('/classes/:id/invites', sameOriginEarly, requireUser, prof(async (c) => addInvites(c.env.DB, c.var.user, c.req.param('id'), await c.req.json().catch(() => ({})))));
+/** Removes an email from the list (a student already in the class stays in it). */
+v1.delete('/classes/:id/invites/:inviteId', sameOriginEarly, requireUser, prof((c) => removeInvite(c.env.DB, c.var.user, c.req.param('id'), c.req.param('inviteId'))));

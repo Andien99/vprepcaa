@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Question bank | vprepcaa</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/practice.css">
+<link rel="stylesheet" href="/css/bank.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="19">vprepcaa</a>
+  <nav id="account-nav" aria-label="Account"></nav>
+</header>
+<main class="wide">
+  <p id="banner" class="banner toast" role="status" hidden></p>
+  <div class="bk">
+    <section class="card bk-top" aria-label="Bank controls">
+      <div class="bk-bar">
+        <h1><span aria-hidden="true">📚</span> Question bank</h1>
+        <div id="subjects"></div>
+        <span class="grow"></span>
+        <input type="search" id="q" placeholder="Search name, type, topic…" aria-label="Search">
+        <label class="inline">Group <select id="group" aria-label="Group by">
+          <option value="">None</option><option value="area">Study design area</option><option value="type">Question type</option><option value="paper">Paper</option><option value="difficulty">Difficulty</option><option value="chapter">Chapter</option>
+        </select></label>
+        <label class="inline">Sort <select id="sort" aria-label="Sort by">
+          <option value="paper">Paper, newest</option><option value="paper-old">Paper, oldest</option><option value="hard">Hardest first</option><option value="easy">Easiest first</option><option value="marks">Most marks</option><option value="zero">Most scoring zero</option>
+        </select></label>
+        <span class="muted small" id="count"></span>
+        <span id="staffbtns"></span>
+      </div>
+    </section>
+    <aside class="card fl" id="filters" aria-label="Filters"></aside>
+    <section class="card tblcard" aria-label="Questions">
+      <div class="tblwrap" id="tblwrap"><div class="skel" style="min-height:300px"></div></div>
+      <div class="locked-note" id="locked"></div>
+    </section>
+  </div>
+</main>
+<aside class="drawer" id="drawer" hidden aria-label="Question"></aside>
+<dialog id="dlg" class="sheet-dialog" style="width:min(720px,calc(100vw - 32px))"><div id="classes-wrap" style="padding:18px 20px"><div id="dlg-body"></div></div></dialog>
+<script type="module" src="/js/bank.js"></script>
+</body>
+</html>

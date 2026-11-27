@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600&family=Schibsted+Grotesk:wght@500;650;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/css/site.css">
 <link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/welcome.css">
 </head>
 <body>
 <header class="site-header">
@@ -19,6 +20,31 @@
 <main class="wide">
   <p id="banner" class="banner toast" role="status" hidden></p>
   <p id="who" class="muted small" hidden></p>
+
+  <!-- A student who isn't in a class yet: join with the code, or wait to be added by email. -->
+  <section id="gate" class="welcome gate" hidden>
+    <ol class="steps" aria-label="Getting started">
+      <li class="done"><b>✓</b>Your profile</li>
+      <li class="on"><b>2</b>Join your class</li>
+    </ol>
+    <form id="gate-form" class="card sheet" novalidate>
+      <span class="eyebrow">One more step</span>
+      <h1>Join your class</h1>
+      <p class="muted">Enter the 6-character class code your teacher gave you. Your dashboard, daily questions and homework open once you're in a class.</p>
+      <label for="gate-code">Class code</label>
+      <div class="code-row">
+        <input id="gate-code" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="e.g. K7Q3MZ">
+        <button class="btn" type="submit" id="gate-join">Join class</button>
+      </div>
+      <p id="gate-message" class="form-message" role="alert"></p>
+      <div class="gate-or"><span>or</span></div>
+      <div class="gate-wait">
+        <p><b>No code?</b> Ask your teacher to add <code id="gate-email"></code> to the class. You'll be put in it automatically.</p>
+        <button class="btn btn-secondary btn-small" type="button" id="gate-check">I've been added: check again</button>
+      </div>
+      <p class="gate-foot small"><a href="/welcome/?next=/student/">Edit profile</a> · <button type="button" class="linklike" id="gate-signout">Sign out</button></p>
+    </form>
+  </section>
 
   <!-- Student dashboard (filled by /js/student.js). On a monitor it fills the
        window: the page doesn't scroll, long panels scroll inside themselves. -->
@@ -61,7 +87,7 @@
     <div id="classes-wrap">
       <section id="classes-card" class="card classes-card" hidden>
         <div class="page-head"><h2 id="classes-h" style="margin:0">My classes</h2>
-          <span class="row-gap"><button id="signout" class="btn btn-secondary btn-small" type="button">Sign out</button><button id="classes-close" class="btn btn-secondary btn-small" type="button" hidden>Close</button></span></div>
+          <span class="row-gap"><a class="btn btn-secondary btn-small" href="/welcome/?next=/student/">Edit profile</a><button id="signout" class="btn btn-secondary btn-small" type="button">Sign out</button><button id="classes-close" class="btn btn-secondary btn-small" type="button" hidden>Close</button></span></div>
         <ul id="classes" class="class-list"></ul>
         <p id="no-classes" class="muted" hidden>You're not in any classes yet.</p>
       </section>
@@ -97,6 +123,25 @@
     </div>
   </dialog>
   <div id="teacher-area"></div>
+
+  <!-- Teachers: a class's students and its email list. -->
+  <dialog id="roster-dialog" class="sheet-dialog roster-dialog" aria-labelledby="roster-h">
+    <div class="card">
+      <div class="page-head"><h2 id="roster-h" style="margin:0">Students</h2><button id="roster-close" class="btn btn-secondary btn-small" type="button">Close</button></div>
+      <p class="muted small" id="roster-sub"></p>
+      <form id="invite-form" novalidate>
+        <label for="invite-emails">Add students by email</label>
+        <textarea id="invite-emails" rows="4" placeholder="Paste emails, one per line or separated by commas&#10;e.g. alex.nguyen@schools.vic.edu.au"></textarea>
+        <p class="muted small" style="margin:.35rem 0 .6rem">Students on this list are put into the class when they sign in with that Google account, without the code. Students who already have an account join straight away.</p>
+        <button class="btn btn-small" type="submit" id="invite-add">Add to class</button>
+        <p id="invite-message" class="form-message" role="alert"></p>
+      </form>
+      <div class="roster-cols">
+        <section><h3>In the class <span class="muted" id="roster-n"></span></h3><ul id="roster-students" class="roster"></ul></section>
+        <section><h3>Waiting to sign in <span class="muted" id="roster-w"></span></h3><ul id="roster-waiting" class="roster"></ul></section>
+      </div>
+    </div>
+  </dialog>
 </main>
 <script type="module" src="/js/student.js"></script>
 </body>

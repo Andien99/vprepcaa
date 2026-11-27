@@ -2,7 +2,7 @@
 // Students: next activity, today's questions, homework, chapters, streak, progress,
 // recent results, and joining another class. Teachers and admins: their classes and
 // the create-class form.
-import { getMe, getDashboard, signOut, finishJoin, joinClass, listSubjects, createClass, normaliseCode } from './api/client.js';
+import { getMe, getDashboard, signOut, finishJoin, joinClass, listSubjects, createClass, normaliseCode, welcomeUrl, getInvites, addInvites, removeInvite } from './api/client.js';
 import { renderAccountNav } from './header.js';
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
@@ -238,6 +238,7 @@ function renderProgress(d) {
       <span class="ico ${esc(s.code)}">${esc(s.code.replace(/34$/, ''))}</span>
       <div><div class="l1"><span>${s.attempted} of ${s.questions} questions</span><span>${s.scorePct != null ? `${s.scorePct}% of marks` : 'no marks yet'}</span></div>${bar(s.coveragePct)}</div>
       <div class="l3"><span class="tg good">${counts.completed} chapter${counts.completed === 1 ? '' : 's'} completed</span><span class="tg">${remaining} remaining</span>${counts.in_progress ? `<span class="tg retrieval">${counts.in_progress} in progress</span>` : ''}${counts.locked ? `<span class="tg line">${counts.locked} not open yet</span>` : ''}${s.fixDue ? `<span class="tg fix">${s.fixDue} to fix</span>` : ''}</div>
+      ${s.weakTypes?.length ? `<div class="l3"><span class="muted small" style="align-self:center">Work on:</span>${s.weakTypes.map((/** @type {any} */ t) => `<a class="nt nc-${esc(t.colour)}" style="text-decoration:none" href="/bank/?subject=${esc(s.code)}&amp;type=${encodeURIComponent(t.id)}" title="${t.mastery}% mastery over ${t.attempts} answers">${esc(t.name)} · ${t.mastery}%</a>`).join('')}</div>` : ''}
     </div>`;
   $('prog-head').querySelectorAll('[data-sub]').forEach((/** @type {HTMLElement} */ b) =>
     b.addEventListener('click', () => {
@@ -371,7 +372,12 @@ function renderClasses(classes) {
         }
         setTimeout(() => (copy.textContent = 'Copy join link'), 2000);
       });
-      share.append('Class code ', code, copy);
+      const roster = document.createElement('button');
+      roster.type = 'button';
+      roster.className = 'btn btn-small';
+      roster.textContent = 'Students and emails';
+      roster.addEventListener('click', () => openRoster(c));
+      share.append('Class code ', code, copy, roster);
       li.append(share);
     }
     list.append(li);
@@ -403,9 +409,24 @@ async function refresh() {
     location.replace('/signin');
     return null;
   }
+  // New accounts fill in their profile first.
+  if (!me.onboarded) {
+    location.replace(welcomeUrl());
+    return null;
+  }
   renderAccountNav(me);
   renderClasses(me.classes);
   $('classes-card').hidden = false;
+  if (me.joinedByEmail?.length) showBanner(`Your teacher added you to ${me.joinedByEmail.map((/** @type {any} */ c) => c.name).join(' and ')}.`);
+  if (me.role === 'student' && !me.classes.some((/** @type {any} */ c) => c.myRole === 'student')) {
+    // Not in a class yet: the class code (or being added by email) comes first.
+    $('dash').hidden = true;
+    document.body.classList.remove('app');
+    $('gate').hidden = false;
+    $('gate-email').textContent = me.email;
+    return me;
+  }
+  $('gate').hidden = true;
   if (me.role === 'student') {
     $('dash').hidden = false;
     document.body.classList.add('app');
@@ -419,7 +440,14 @@ async function refresh() {
   } else {
     // Teachers: classes and the create form sit on the page itself.
     const dlg = /** @type {HTMLDialogElement} */ ($('classes-dialog'));
-    if (dlg.isConnected && $('classes-wrap').parentElement === dlg) $('teacher-area').append($('classes-wrap'));
+    if (dlg.isConnected && $('classes-wrap').parentElement === dlg) {
+      $('teacher-area').insertAdjacentHTML(
+        'beforeend',
+        `<section class="card"><div class="page-head"><h2 style="margin:0">📚 Question bank</h2><a class="btn btn-small" href="/bank/">Open the bank</a></div>
+         <p class="muted" style="margin:.5rem 0 0">Every exam question with its question type, study design area, paper and state results, colour-coded as in Notion. ${me.role === 'admin' ? 'Edit questions and solutions, add new exams, and manage question types and areas.' : "Browse the shared VCAA bank, and add and edit your school's own papers and questions."}</p></section>`,
+      );
+      $('teacher-area').append($('classes-wrap'));
+    }
     $('who').hidden = false;
     $('who').textContent = `Signed in as ${me.email} · ${me.role}`;
   }
@@ -451,8 +479,121 @@ async function main() {
   }
   if (params.size) history.replaceState(null, '', '/student/');
 
-  if (signedIn.role === 'student') setupJoin();
-  if (signedIn.role === 'teacher' || signedIn.role === 'admin') setupCreate();
+  if (signedIn.role === 'student') {
+    setupJoin();
+    setupGate();
+  }
+  if (signedIn.role === 'teacher' || signedIn.role === 'admin') {
+    setupCreate();
+    setupRoster();
+  }
+}
+
+/** The gate's code form and "check again" (students with no class). */
+function setupGate() {
+  const form = /** @type {HTMLFormElement} */ ($('gate-form'));
+  const msg = /** @type {HTMLElement} */ ($('gate-message'));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = normaliseCode($('gate-code').value);
+    if (code.length !== 6) {
+      msg.textContent = 'Class codes are 6 letters and numbers.';
+      return;
+    }
+    msg.textContent = '';
+    $('gate-join').disabled = true;
+    const { status, data } = await joinClass(code);
+    $('gate-join').disabled = false;
+    if (status !== 200) {
+      msg.textContent = ERRORS[data.error] ?? 'Could not join that class.';
+      return;
+    }
+    $('gate-code').value = '';
+    showBanner(`Welcome! You've joined ${data.joined.name}.`);
+    await refresh();
+  });
+  $('gate-check').addEventListener('click', async () => {
+    $('gate-check').disabled = true;
+    const before = me?.classes?.length ?? 0;
+    await refresh();
+    $('gate-check').disabled = false;
+    if ((me?.classes?.length ?? 0) === before) msg.textContent = `You're not on a class list yet. Check your teacher added ${me?.email ?? 'your email'}.`;
+    else showBanner(`You're in ${me.classes.map((/** @type {any} */ c) => c.name).join(' and ')}.`);
+  });
+  $('gate-signout').addEventListener('click', async () => {
+    await signOut();
+    location.replace('/');
+  });
+}
+
+// ---- Teachers: a class's students and email list ----------------------------------------
+
+/** @type {any} */
+let rosterClass = null;
+const fmtDate = (/** @type {number} */ ms) => new Intl.DateTimeFormat('en-AU', { timeZone: TZ, day: 'numeric', month: 'short' }).format(new Date(ms));
+
+function renderRoster(/** @type {{ invites: any[], students: any[] }} */ r) {
+  const waiting = r.invites.filter((i) => !i.joined);
+  $('roster-n').textContent = `(${r.students.length})`;
+  $('roster-w').textContent = `(${waiting.length})`;
+  $('roster-students').innerHTML = r.students.length
+    ? r.students
+        .map((st) => `<li><span class="who"><b>${esc(st.name)}</b><span>${esc(st.email)}${st.yearLevel ? ` · Year ${st.yearLevel}` : ''}</span></span><span class="tg ${st.via === 'email' ? 'retrieval' : 'line'}" title="Joined ${fmtDate(st.joinedAt)}">${st.via === 'email' ? 'Email list' : 'Code'}</span></li>`)
+        .join('')
+    : '<li class="empty">No students yet</li>';
+  $('roster-waiting').innerHTML = waiting.length
+    ? waiting.map((i) => `<li><span class="who"><b>${esc(i.email)}</b><span>Added ${fmtDate(i.createdAt ?? Date.now())}</span></span><button type="button" class="x" data-id="${esc(i.id)}" title="Remove from the list" aria-label="Remove ${esc(i.email)}">×</button></li>`).join('')
+    : '<li class="empty">Everyone on the list has joined</li>';
+}
+
+async function openRoster(/** @type {any} */ cls) {
+  rosterClass = cls;
+  const dlg = /** @type {HTMLDialogElement} */ ($('roster-dialog'));
+  $('roster-h').textContent = `${cls.name}: students`;
+  $('roster-sub').textContent = `${cls.subjectName} · ${cls.academicYear} · class code ${cls.joinCode}`;
+  $('invite-message').textContent = '';
+  $('roster-students').innerHTML = '<li class="empty">Loading…</li>';
+  $('roster-waiting').innerHTML = '';
+  if (!dlg.open) dlg.showModal();
+  const r = await getInvites(cls.id);
+  if (r) renderRoster(r);
+  else $('roster-students').innerHTML = '<li class="empty">Could not load the class list</li>';
+}
+
+function setupRoster() {
+  const dlg = /** @type {HTMLDialogElement} */ ($('roster-dialog'));
+  $('roster-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener('close', () => refresh());
+  $('invite-form').addEventListener('submit', async (/** @type {Event} */ e) => {
+    e.preventDefault();
+    const msg = $('invite-message');
+    const text = $('invite-emails').value.trim();
+    if (!text) return void (msg.textContent = 'Paste at least one email.');
+    $('invite-add').disabled = true;
+    const { status, data } = await addInvites(rosterClass.id, text);
+    $('invite-add').disabled = false;
+    if (status !== 200) {
+      msg.textContent = data.error === 'invalid_emails' ? "Those don't look like email addresses." : data.error === 'too_many' ? 'Add at most 200 emails at a time.' : 'Could not add those emails.';
+      return;
+    }
+    $('invite-emails').value = data.invalid.length ? data.invalid.join('\n') : '';
+    msg.textContent = data.invalid.length ? `Not added (not email addresses): ${data.invalid.join(', ')}` : '';
+    const parts = [`Added ${data.added} email${data.added === 1 ? '' : 's'}`];
+    if (data.joinedNow) parts.push(`${data.joinedNow} already had an account and joined straight away`);
+    if (data.alreadyListed) parts.push(`${data.alreadyListed} already on the list`);
+    if (data.staffEmails?.length) parts.push(`${data.staffEmails.length} belong to teacher accounts and won't be enrolled`);
+    showBanner(`${parts.join('; ')}.`);
+    renderRoster(data);
+  });
+  $('roster-waiting').addEventListener('click', async (/** @type {any} */ e) => {
+    const b = e.target.closest('button.x');
+    if (!b) return;
+    b.disabled = true;
+    const { status, data } = await removeInvite(rosterClass.id, b.dataset.id);
+    if (status === 200) renderRoster(data);
+    else b.disabled = false;
+  });
 }
 
 function setupJoin() {

@@ -4,14 +4,17 @@
 /**
  * @typedef {{ name: string, subjectName: string, schoolName: string | null, academicYear: number }} PublicClass
  * @typedef {{ id: string, name: string, academicYear: number, subjectName: string, myRole: 'teacher' | 'student', joinCode: string | null, studentCount: number | null }} MyClass
- * @typedef {{ id: string, name: string, email: string, image: string | null, role: string, classes: MyClass[] }} Me
+ * @typedef {{ firstName: string | null, lastName: string | null, schoolName: string | null, yearLevel: number | null, subjects: string[], onboarded: boolean }} Profile
+ * @typedef {{ id: string, name: string, email: string, image: string | null, role: string, classes: MyClass[], profile: Profile, onboarded: boolean, joinedByEmail: { id: string, name: string }[] }} Me
+ * @typedef {{ id: string, email: string, joined: boolean, joinedAt: number | null, studentName: string | null }} Invite
+ * @typedef {{ id: string, name: string, email: string, yearLevel: number | null, joinedAt: number, via: 'email' | 'code' }} RosterStudent
  * @typedef {{ id: string, code: string, name: string }} Subject
  */
 
 /** POST JSON and return { status, data }. */
-async function postJson(/** @type {string} */ url, /** @type {unknown} */ body) {
+async function postJson(/** @type {string} */ url, /** @type {unknown} */ body, method = 'POST') {
   const res = await fetch(url, {
-    method: 'POST',
+    method,
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
@@ -102,4 +105,32 @@ export async function getDashboard() {
   if (res.status === 401 || res.status === 403) return null;
   if (!res.ok) throw new Error(`dashboard failed: ${res.status}`);
   return res.json();
+}
+
+/** Saves the profile from /welcome. */
+export async function saveProfile(/** @type {{ firstName: string, lastName: string, schoolName: string, yearLevel: number | null, subjects: string[] }} */ input) {
+  return postJson('/api/v1/me/profile', input, 'PUT');
+}
+
+/** @returns {Promise<{ invites: Invite[], students: RosterStudent[] } | null>} a class's email list and students (its teacher) */
+export async function getInvites(/** @type {string} */ classId) {
+  const res = await fetch(`/api/v1/classes/${encodeURIComponent(classId)}/invites`, { credentials: 'same-origin' });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Adds pasted emails to a class's list. */
+export async function addInvites(/** @type {string} */ classId, /** @type {string} */ emails) {
+  return postJson(`/api/v1/classes/${encodeURIComponent(classId)}/invites`, { emails });
+}
+
+/** Removes one email from a class's list. */
+export async function removeInvite(/** @type {string} */ classId, /** @type {string} */ inviteId) {
+  return postJson(`/api/v1/classes/${encodeURIComponent(classId)}/invites/${encodeURIComponent(inviteId)}`, undefined, 'DELETE');
+}
+
+/** /welcome?next=<this page>: where a new account sets up its profile first. */
+export function welcomeUrl() {
+  const here = location.pathname + location.search;
+  return here === '/' || here.startsWith('/welcome') ? '/welcome/' : `/welcome/?next=${encodeURIComponent(here)}`;
 }

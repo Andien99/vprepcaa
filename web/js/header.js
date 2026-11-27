@@ -1,6 +1,6 @@
 // Top-right account control on every page: "Sign in" when signed out,
 // "My dashboard" when signed in. Pages include <nav id="account-nav"> in the header.
-import { getMe } from './api/client.js';
+import { getMe, welcomeUrl } from './api/client.js';
 
 const nav = document.getElementById('account-nav');
 
@@ -30,6 +30,13 @@ export function renderAccountNav(me) {
     avatar.append(img);
   } else avatar.textContent = first.charAt(0).toUpperCase();
   nav.append(name, avatar);
+  if (!location.pathname.startsWith('/bank')) {
+    const b = document.createElement('a');
+    b.className = 'btn btn-header btn-secondary';
+    b.href = '/bank/';
+    b.textContent = 'Question bank';
+    nav.prepend(b);
+  }
   if (!onDashboard) {
     const a = document.createElement('a');
     a.className = 'btn btn-header';
@@ -43,6 +50,13 @@ export function renderAccountNav(me) {
 export async function initHeader() {
   try {
     const me = await getMe();
+    // A new account fills in its profile before using any page (the home page and
+    // the profile page itself excepted).
+    if (me && !me.onboarded && !['/', '/welcome/', '/signin', '/signin.html', '/privacy', '/privacy.html'].includes(location.pathname)) {
+      location.replace(welcomeUrl());
+      // Never settles, so the page doesn't carry on (or send us to /signin) meanwhile.
+      return new Promise(() => {});
+    }
     renderAccountNav(me);
     return me;
   } catch {
